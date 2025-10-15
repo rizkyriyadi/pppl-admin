@@ -54,8 +54,8 @@ export default function StudentsPage() {
           updatedAt: serverTimestamp(),
         });
       } else {
-        // Create new student - use NISN as email directly
-        const email = formData.nisn;
+        // Create new student - append @gmail.com to NISN for Firebase Auth
+        const email = `${formData.nisn}@gmail.com`;
 
         // Check if NISN already exists in Firestore
         const nisnQuery = query(
@@ -315,13 +315,13 @@ export default function StudentsPage() {
                   onChange={(e) => setFormData({ ...formData, nisn: e.target.value })}
                   className="w-full px-3 py-2 border border-slate-300 rounded-md text-slate-900
                            focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Enter NISN (will be used as login email)"
+                  placeholder="Enter NISN"
                   required
                   disabled={!!editingStudent}
                 />
                 {!editingStudent && (
                   <p className="text-xs text-slate-500 mt-1">
-                    NISN will be used as the login email/username
+                    This will be used as the login username
                   </p>
                 )}
               </div>

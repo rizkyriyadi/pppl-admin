@@ -31,7 +31,18 @@ yarn-error.log*
 .pnpm-debug.log*
 
 # env files (can opt-in for committing if needed)
-.env*
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+# But allow .env.example
+!.env.example
+
+# Firebase Admin SDK (NEVER commit these!)
+*firebase-adminsdk*.json
+*.pem
+*.key
 
 # vercel
 .vercel

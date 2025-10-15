@@ -1,0 +1,139 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isStudent() {
+      return isSignedIn() &&
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'student';
+    }
+
+    function isAdmin() {
+      return isSignedIn() &&
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'superadmin'];
+    }
+
+    function isSuperAdmin() {
+      return isSignedIn() &&
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'superadmin';
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // ====================
+    // USERS COLLECTION
+    // ====================
+    match /users/{userId} {
+      // Allow reading own data
+      allow read: if isSignedIn() && request.auth.uid == resource.data.uid;
+
+      // Admins can read all users
+      allow read: if isAdmin();
+
+      // Allow create for authenticated users (for new user registration by admin)
+      // Check that the uid field matches the authenticated user
+      allow create: if isSignedIn() &&
+                       request.resource.data.uid == request.auth.uid;
+
+      // Allow create for admins (creating users for students/teachers)
+      allow create: if isAdmin();
+
+      // Admins can update users
+      allow update: if isAdmin();
+
+      // Only superadmin can delete users
+      allow delete: if isSuperAdmin();
+    }
+
+    // ====================
+    // EXAMS COLLECTION
+    // ====================
+    match /exams/{examId} {
+      // All authenticated users can read active exams
+      allow read: if isSignedIn();
+
+      // Only admins can create/update/delete exams
+      allow create, update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // ====================
+    // QUESTIONS COLLECTION
+    // ====================
+    match /questions/{questionId} {
+      // All authenticated users can read questions
+      allow read: if isSignedIn();
+
+      // Only admins can create/update/delete questions
+      allow create, update, delete: if isAdmin();
+    }
+
+    // ====================
+    // EXAM ATTEMPTS COLLECTION
+    // ====================
+    match /examAttempts/{attemptId} {
+      // Students can read their own attempts
+      allow read: if isSignedIn() &&
+                     resource.data.studentId == request.auth.uid;
+
+      // Admins can read all attempts
+      allow read: if isAdmin();
+
+      // Students can create attempts for themselves
+      allow create: if isSignedIn() &&
+                       request.resource.data.studentId == request.auth.uid &&
+                       request.resource.data.keys().hasAll([
+                         'examId', 'examTitle', 'studentId', 'studentName',
+                         'studentClass', 'answers', 'score', 'totalQuestions',
+                         'correctAnswers', 'incorrectAnswers', 'unanswered',
+                         'timeSpent', 'isPassed', 'status'
+                       ]);
+
+      // Admins can also create attempts (for manual entry)
+      allow create: if isAdmin();
+
+      // No one can update or delete attempts (data integrity)
+      // Only admins can update if needed (e.g., corrections)
+      allow update: if isAdmin();
+      allow delete: if isSuperAdmin();
+    }
+
+    // ====================
+    // ANALYTICS COLLECTION
+    // ====================
+    match /analytics/{analyticsId} {
+      // Admins can read/write analytics
+      allow read, write: if isAdmin();
+
+      // Students cannot access analytics
+      allow read, write: if false;
+    }
+
+    // ====================
+    // SETTINGS COLLECTION
+    // ====================
+    match /settings/{document=**} {
+      // Everyone can read settings
+      allow read: if isSignedIn();
+
+      // Only superadmin can update settings
+      allow update: if isSuperAdmin();
+
+      // Only superadmin can create settings
+      allow create: if isSuperAdmin();
+
+      // No one can delete settings
+      allow delete: if false;
+    }
+  }
+}

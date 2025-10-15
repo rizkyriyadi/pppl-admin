@@ -14,7 +14,6 @@ export default function StudentsPage() {
 
   const [formData, setFormData] = useState({
     name: '',
-    email: '',
     nisn: '',
     class: '',
     password: '',
@@ -55,37 +54,86 @@ export default function StudentsPage() {
           updatedAt: serverTimestamp(),
         });
       } else {
-        // Create new student
-        const email = `${formData.nisn}@student.sdntugu1.sch.id`;
+        // Create new student - use NISN as email directly
+        const email = formData.nisn;
 
-        // Create Firebase Auth user
-        const userCredential = await createUserWithEmailAndPassword(
-          auth,
-          email,
-          formData.password
+        // Check if NISN already exists in Firestore
+        const nisnQuery = query(
+          collection(db, 'users'),
+          where('nisn', '==', formData.nisn),
+          where('role', '==', 'student')
         );
+        const nisnSnapshot = await getDocs(nisnQuery);
 
-        // Create Firestore document
-        await addDoc(collection(db, 'users'), {
-          uid: userCredential.user.uid,
-          role: 'student',
-          name: formData.name,
-          email: email,
-          nisn: formData.nisn,
-          class: formData.class,
-          isActive: true,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
+        if (!nisnSnapshot.empty) {
+          alert(`A student with NISN ${formData.nisn} already exists. Please use a different NISN.`);
+          return;
+        }
+
+        let userCredential;
+        let firestoreDocCreated = false;
+
+        try {
+          // Create Firebase Auth user first
+          userCredential = await createUserWithEmailAndPassword(
+            auth,
+            email,
+            formData.password
+          );
+
+          // Create Firestore document with the user's UID as document ID
+          // This ensures the document exists for security rules checking
+          await addDoc(collection(db, 'users'), {
+            uid: userCredential.user.uid,
+            role: 'student',
+            name: formData.name,
+            email: email,
+            nisn: formData.nisn,
+            class: formData.class,
+            isActive: true,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+
+          firestoreDocCreated = true;
+        } catch (firestoreError) {
+          console.error('Error creating Firestore document:', firestoreError);
+
+          // If Firestore fails but Auth succeeded, we need to clean up the Auth user
+          if (userCredential && !firestoreDocCreated) {
+            try {
+              await userCredential.user.delete();
+              console.log('Cleaned up orphaned Auth user');
+            } catch (deleteError) {
+              console.error('Failed to delete orphaned Auth user:', deleteError);
+            }
+          }
+
+          // Re-throw the error to be caught by outer catch
+          throw firestoreError;
+        }
       }
 
       setShowModal(false);
       resetForm();
       fetchStudents();
     } catch (error) {
-      const err = error as Error;
       console.error('Error saving student:', error);
-      alert(err.message || 'Failed to save student');
+
+      // Handle specific Firebase Auth errors
+      const firebaseError = error as { code?: string; message?: string };
+
+      if (firebaseError.code === 'auth/email-already-in-use') {
+        alert(`A student with NISN ${formData.nisn} already exists.`);
+      } else if (firebaseError.code === 'auth/weak-password') {
+        alert('Password is too weak. Please use at least 6 characters.');
+      } else if (firebaseError.code === 'auth/invalid-email') {
+        alert('Invalid NISN format. Please use a valid format (e.g., email address).');
+      } else if (firebaseError.code === 'permission-denied' || firebaseError.message?.includes('permission')) {
+        alert('Permission denied. Please contact administrator to update Firestore security rules.');
+      } else {
+        alert(firebaseError.message || 'Failed to save student. Please try again.');
+      }
     }
   };
 
@@ -93,7 +141,6 @@ export default function StudentsPage() {
     setEditingStudent(student);
     setFormData({
       name: student.name,
-      email: student.email,
       nisn: student.nisn || '',
       class: student.class || '',
       password: '',
@@ -117,7 +164,6 @@ export default function StudentsPage() {
   const resetForm = () => {
     setFormData({
       name: '',
-      email: '',
       nisn: '',
       class: '',
       password: '',
@@ -269,14 +315,13 @@ export default function StudentsPage() {
                   onChange={(e) => setFormData({ ...formData, nisn: e.target.value })}
                   className="w-full px-3 py-2 border border-slate-300 rounded-md text-slate-900
                            focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="10-digit NISN"
-                  maxLength={10}
+                  placeholder="Enter NISN (will be used as login email)"
                   required
                   disabled={!!editingStudent}
                 />
                 {!editingStudent && (
                   <p className="text-xs text-slate-500 mt-1">
-                    Email will be: {formData.nisn}@student.sdntugu1.sch.id
+                    NISN will be used as the login email/username
                   </p>
                 )}
               </div>

@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 import { collection, getDocs, query, orderBy } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { ExamAttempt } from '@/lib/types';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 export default function ResultsPage() {
   const [results, setResults] = useState<ExamAttempt[]>([]);
@@ -95,6 +97,109 @@ export default function ResultsPage() {
 
   const stats = calculateStats();
 
+  const exportToPDF = () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const doc = new jsPDF() as any;
+
+    // Header
+    doc.setFontSize(18);
+    doc.setFont('helvetica', 'bold');
+    doc.text('SDN TUGU 1', 105, 15, { align: 'center' });
+
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Laporan Nilai Ujian Siswa', 105, 23, { align: 'center' });
+
+    // Date
+    doc.setFontSize(10);
+    doc.text(`Tanggal: ${new Date().toLocaleDateString('id-ID')}`, 14, 32);
+
+    // Statistics
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Statistik:', 14, 40);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Total Percobaan: ${stats.totalAttempts}`, 14, 46);
+    doc.text(`Nilai Rata-rata: ${stats.avgScore}%`, 14, 52);
+    doc.text(`Tingkat Kelulusan: ${stats.passRate}%`, 14, 58);
+
+    // Applied filters
+    if (filterClass || filterExam || filterStatus) {
+      doc.setFont('helvetica', 'bold');
+      doc.text('Filter Aktif:', 14, 66);
+      doc.setFont('helvetica', 'normal');
+      let yPos = 72;
+      if (filterClass) {
+        doc.text(`- Kelas: ${filterClass}`, 14, yPos);
+        yPos += 6;
+      }
+      if (filterExam) {
+        const examTitle = getUniqueExams().find(([id]) => id === filterExam)?.[1];
+        doc.text(`- Ujian: ${examTitle}`, 14, yPos);
+        yPos += 6;
+      }
+      if (filterStatus) {
+        doc.text(`- Status: ${filterStatus === 'passed' ? 'Lulus' : 'Tidak Lulus'}`, 14, yPos);
+      }
+    }
+
+    // Table data
+    const tableData = filteredResults.map((result) => [
+      result.studentName,
+      result.studentClass,
+      result.examTitle,
+      `${result.score}%`,
+      `${result.correctAnswers}/${result.totalQuestions}`,
+      `${Math.floor(result.timeSpent / 60)} min`,
+      result.isPassed ? 'Lulus' : 'Tidak Lulus',
+      new Date(result.submittedAt).toLocaleDateString('id-ID'),
+    ]);
+
+    // Generate table
+    autoTable(doc, {
+      startY: filterClass || filterExam || filterStatus ? 80 : 68,
+      head: [['Nama Siswa', 'Kelas', 'Ujian', 'Nilai', 'Benar', 'Waktu', 'Status', 'Tanggal']],
+      body: tableData,
+      styles: {
+        fontSize: 9,
+        cellPadding: 3,
+      },
+      headStyles: {
+        fillColor: [37, 99, 235],
+        textColor: 255,
+        fontStyle: 'bold',
+      },
+      alternateRowStyles: {
+        fillColor: [248, 250, 252],
+      },
+      columnStyles: {
+        3: { halign: 'center' },
+        4: { halign: 'center' },
+        5: { halign: 'center' },
+        6: { halign: 'center' },
+        7: { halign: 'center' },
+      },
+    });
+
+    // Footer
+    const pageCount = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.setFontSize(8);
+      doc.setTextColor(128);
+      doc.text(
+        `Halaman ${i} dari ${pageCount}`,
+        105,
+        doc.internal.pageSize.height - 10,
+        { align: 'center' }
+      );
+    }
+
+    // Save PDF
+    const fileName = `Laporan_Nilai_${filterClass || 'Semua_Kelas'}_${new Date().toLocaleDateString('id-ID').replace(/\//g, '-')}.pdf`;
+    doc.save(fileName);
+  };
+
   if (loading) {
     return (
       <div className="p-8">
@@ -105,9 +210,20 @@ export default function ResultsPage() {
 
   return (
     <div className="p-8">
-      <div className="mb-8">
-        <h1 className="text-2xl font-semibold text-slate-900">Exam Results</h1>
-        <p className="text-slate-600 text-sm mt-1">View and analyze student exam results</p>
+      <div className="flex justify-between items-start mb-8">
+        <div>
+          <h1 className="text-2xl font-semibold text-slate-900">Exam Results</h1>
+          <p className="text-slate-600 text-sm mt-1">View and analyze student exam results</p>
+        </div>
+        <button
+          onClick={exportToPDF}
+          disabled={filteredResults.length === 0}
+          className="px-4 py-2 bg-blue-600 text-white rounded-md font-medium hover:bg-blue-700
+                   focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2
+                   disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          Export to PDF
+        </button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">

@@ -52,7 +52,7 @@ export default function LoginPage() {
         <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-8">
           <div className="mb-8">
             <h1 className="text-2xl font-semibold text-slate-900 mb-2">Admin Panel</h1>
-            <p className="text-slate-600 text-sm">SDN Pasir Gunung Selatan 1</p>
+            <p className="text-slate-600 text-sm">SDN TUGU 1</p>
           </div>
 
           <form onSubmit={handleLogin} className="space-y-5">
@@ -68,7 +68,7 @@ export default function LoginPage() {
                 className="w-full px-3 py-2 border border-slate-300 rounded-md text-slate-900
                          focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
                          placeholder:text-slate-400"
-                placeholder="admin@sdnpgs1.sch.id"
+                placeholder="admin@sdntugu1.sch.id"
                 required
                 disabled={loading}
               />
@@ -112,7 +112,7 @@ export default function LoginPage() {
 
           <div className="mt-6 pt-6 border-t border-slate-200">
             <p className="text-xs text-slate-500 text-center">
-              Default credentials: admin@sdnpgs1.sch.id / admin123
+              Default credentials: admin@sdntugu1.sch.id / admin123
             </p>
           </div>
         </div>

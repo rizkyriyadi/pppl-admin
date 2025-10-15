@@ -56,7 +56,7 @@ export default function StudentsPage() {
         });
       } else {
         // Create new student
-        const email = `${formData.nisn}@student.sdnpgs1.sch.id`;
+        const email = `${formData.nisn}@student.sdntugu1.sch.id`;
 
         // Create Firebase Auth user
         const userCredential = await createUserWithEmailAndPassword(
@@ -276,7 +276,7 @@ export default function StudentsPage() {
                 />
                 {!editingStudent && (
                   <p className="text-xs text-slate-500 mt-1">
-                    Email will be: {formData.nisn}@student.sdnpgs1.sch.id
+                    Email will be: {formData.nisn}@student.sdntugu1.sch.id
                   </p>
                 )}
               </div>

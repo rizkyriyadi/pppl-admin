@@ -1,6 +1,6 @@
 # Admin Panel - Ujian Online System
 
-Admin panel untuk mengelola sistem ujian online SDN Pasir Gunung Selatan 1.
+Admin panel untuk mengelola sistem ujian online SDN TUGU 1.
 
 ## Features
 
@@ -33,7 +33,7 @@ Admin panel untuk mengelola sistem ujian online SDN Pasir Gunung Selatan 1.
 - Add new students dengan auto-generated email
 - Edit student information (name, class, NISN)
 - Delete student accounts
-- Email format: `{NISN}@student.sdnpgs1.sch.id`
+- Email format: `{NISN}@student.sdntugu1.sch.id`
 
 ### Results Viewing
 - View all exam attempts
@@ -81,7 +81,7 @@ http://localhost:3000
 ## Default Admin Credentials
 
 ```
-Email: admin@sdnpgs1.sch.id
+Email: admin@sdntugu1.sch.id
 Password: admin123
 ```
 
@@ -219,5 +219,5 @@ Untuk issues atau questions, check:
 ---
 
 **Built with**: Next.js 15 + Firebase + Tailwind CSS
-**For**: SDN Pasir Gunung Selatan 1
+**For**: SDN TUGU 1
 **Version**: 1.0.0

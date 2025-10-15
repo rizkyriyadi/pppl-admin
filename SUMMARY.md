@@ -2,7 +2,7 @@
 
 ## Status: COMPLETED ✓
 
-Admin panel untuk sistem ujian online SDN PGS 1 sudah selesai dibuat dan berjalan dengan sukses.
+Admin panel untuk sistem ujian online SDN TUGU 1 sudah selesai dibuat dan berjalan dengan sukses.
 
 ---
 
@@ -67,7 +67,7 @@ Admin panel untuk sistem ujian online SDN PGS 1 sudah selesai dibuat dan berjala
 **Features:**
 - ✓ View all students dalam table
 - ✓ Add new student
-  - Auto-generate email: `{NISN}@student.sdnpgs1.sch.id`
+  - Auto-generate email: `{NISN}@student.sdntugu1.sch.id`
   - Create Firebase Auth account
   - Create Firestore document
 - ✓ Edit student info (name, class, NISN)
@@ -298,7 +298,7 @@ Admin panel siap untuk:
 
 ## Summary
 
-Admin panel untuk sistem ujian online SDN PGS 1 **SELESAI DIBUAT** dengan:
+Admin panel untuk sistem ujian online SDN TUGU 1 **SELESAI DIBUAT** dengan:
 
 ✓ 6 halaman utama (Login, Dashboard, Exams, Questions, Students, Results)
 ✓ Full CRUD operations

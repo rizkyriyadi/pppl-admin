@@ -32,7 +32,7 @@ export default function Sidebar() {
     <div className="w-64 bg-white border-r border-slate-200 h-screen flex flex-col">
       <div className="p-6 border-b border-slate-200">
         <h1 className="text-lg font-semibold text-slate-900">Admin Panel</h1>
-        <p className="text-xs text-slate-600 mt-1">SDN PGS 1</p>
+        <p className="text-xs text-slate-600 mt-1">SDN TUGU 1</p>
       </div>
 
       <nav className="flex-1 p-4 space-y-1">

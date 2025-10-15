@@ -3,7 +3,7 @@ import "./globals.css";
 import { AuthProvider } from "@/lib/AuthContext";
 
 export const metadata: Metadata = {
-  title: "Admin Panel - SDN PGS 1",
+  title: "Admin Panel - SDN TUGU 1",
   description: "Admin panel for online exam system",
 };
 

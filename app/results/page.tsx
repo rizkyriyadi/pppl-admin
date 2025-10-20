@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { collection, getDocs, query, orderBy } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { ExamAttempt } from '@/lib/types';
 import jsPDF from 'jspdf';
@@ -67,6 +67,19 @@ export default function ResultsPage() {
     }
 
     setFilteredResults(filtered);
+  };
+
+  const handleDelete = async (resultId: string) => {
+    if (!confirm('Are you sure you want to delete this exam result? This action cannot be undone.')) {
+      return;
+    }
+    try {
+      await deleteDoc(doc(db, 'examAttempts', resultId));
+      fetchResults();
+    } catch (error) {
+      console.error('Error deleting result:', error);
+      alert('Failed to delete result');
+    }
   };
 
   const getUniqueClasses = () => {
@@ -496,12 +509,15 @@ ${filteredResults.slice(0, 20).map((r, i) => `${i + 1}. ${r.studentName} (${r.st
                 <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">
                   Date
                 </th>
+                <th className="px-6 py-3 text-right text-xs font-medium text-slate-600 uppercase tracking-wider">
+                  Actions
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
               {filteredResults.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-8 text-center text-slate-500">
+                  <td colSpan={8} className="px-6 py-8 text-center text-slate-500">
                     {results.length === 0
                       ? 'No exam results yet'
                       : 'No results match the selected filters'}
@@ -549,6 +565,14 @@ ${filteredResults.slice(0, 20).map((r, i) => `${i + 1}. ${r.studentName} (${r.st
                         month: 'short',
                         year: 'numeric',
                       })}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                      <button
+                        onClick={() => handleDelete(result.id)}
+                        className="text-red-600 hover:text-red-900 font-medium"
+                      >
+                        Delete
+                      </button>
                     </td>
                   </tr>
                 ))

@@ -1,9 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, where, serverTimestamp } from 'firebase/firestore';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
-import { db, auth } from '@/lib/firebase';
+import { collection, getDocs, updateDoc, deleteDoc, doc, query, where, serverTimestamp } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import type { User } from '@/lib/types';
 
 export default function StudentsPage() {
@@ -54,63 +53,24 @@ export default function StudentsPage() {
           updatedAt: serverTimestamp(),
         });
       } else {
-        // Create new student - append @gmail.com to NISN for Firebase Auth
-        const email = `${formData.nisn}@gmail.com`;
-
-        // Check if NISN already exists in Firestore
-        const nisnQuery = query(
-          collection(db, 'users'),
-          where('nisn', '==', formData.nisn),
-          where('role', '==', 'student')
-        );
-        const nisnSnapshot = await getDocs(nisnQuery);
-
-        if (!nisnSnapshot.empty) {
-          alert(`A student with NISN ${formData.nisn} already exists. Please use a different NISN.`);
-          return;
-        }
-
-        let userCredential;
-        let firestoreDocCreated = false;
-
-        try {
-          // Create Firebase Auth user first
-          userCredential = await createUserWithEmailAndPassword(
-            auth,
-            email,
-            formData.password
-          );
-
-          // Create Firestore document with the user's UID as document ID
-          // This ensures the document exists for security rules checking
-          await addDoc(collection(db, 'users'), {
-            uid: userCredential.user.uid,
-            role: 'student',
+        // Create new student using API route (prevents logout issue)
+        const response = await fetch('/api/create-student', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
             name: formData.name,
-            email: email,
             nisn: formData.nisn,
             class: formData.class,
-            isActive: true,
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-          });
+            password: formData.password,
+          }),
+        });
 
-          firestoreDocCreated = true;
-        } catch (firestoreError) {
-          console.error('Error creating Firestore document:', firestoreError);
+        const data = await response.json();
 
-          // If Firestore fails but Auth succeeded, we need to clean up the Auth user
-          if (userCredential && !firestoreDocCreated) {
-            try {
-              await userCredential.user.delete();
-              console.log('Cleaned up orphaned Auth user');
-            } catch (deleteError) {
-              console.error('Failed to delete orphaned Auth user:', deleteError);
-            }
-          }
-
-          // Re-throw the error to be caught by outer catch
-          throw firestoreError;
+        if (!response.ok) {
+          throw new Error(data.error || 'Failed to create student');
         }
       }
 
@@ -119,21 +79,8 @@ export default function StudentsPage() {
       fetchStudents();
     } catch (error) {
       console.error('Error saving student:', error);
-
-      // Handle specific Firebase Auth errors
-      const firebaseError = error as { code?: string; message?: string };
-
-      if (firebaseError.code === 'auth/email-already-in-use') {
-        alert(`A student with NISN ${formData.nisn} already exists.`);
-      } else if (firebaseError.code === 'auth/weak-password') {
-        alert('Password is too weak. Please use at least 6 characters.');
-      } else if (firebaseError.code === 'auth/invalid-email') {
-        alert('Invalid NISN format. Please use a valid format (e.g., email address).');
-      } else if (firebaseError.code === 'permission-denied' || firebaseError.message?.includes('permission')) {
-        alert('Permission denied. Please contact administrator to update Firestore security rules.');
-      } else {
-        alert(firebaseError.message || 'Failed to save student. Please try again.');
-      }
+      const errorMessage = error instanceof Error ? error.message : 'Failed to save student. Please try again.';
+      alert(errorMessage);
     }
   };
 

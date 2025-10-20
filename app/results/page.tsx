@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { collection, getDocs, query, orderBy, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { ExamAttempt } from '@/lib/types';
@@ -21,18 +21,9 @@ export default function ResultsPage() {
   const [showCustomPrompt, setShowCustomPrompt] = useState(false);
   const [customPrompt, setCustomPrompt] = useState('');
 
-  useEffect(() => {
-    fetchResults();
-  }, []);
-
-  useEffect(() => {
-    applyFilters();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [results, filterClass, filterExam, filterStatus]);
-
   // Helper function to parse dates from Firestore
-  const parseDate = (dateValue: any): Date => {
-    if (dateValue && typeof dateValue.toDate === 'function') {
+  const parseDate = (dateValue: unknown): Date => {
+    if (dateValue && typeof dateValue === 'object' && 'toDate' in dateValue && typeof dateValue.toDate === 'function') {
       return dateValue.toDate();
     }
     if (typeof dateValue === 'string') {
@@ -41,7 +32,7 @@ export default function ResultsPage() {
     return new Date();
   };
 
-  const fetchResults = async () => {
+  const fetchResults = useCallback(async () => {
     try {
       const q = query(collection(db, 'examAttempts'), orderBy('submittedAt', 'desc'));
       const snapshot = await getDocs(q);
@@ -58,7 +49,16 @@ export default function ResultsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchResults();
+  }, [fetchResults]);
+
+  useEffect(() => {
+    applyFilters();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [results, filterClass, filterExam, filterStatus]);
 
   const applyFilters = () => {
     let filtered = [...results];

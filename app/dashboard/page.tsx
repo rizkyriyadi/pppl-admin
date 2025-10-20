@@ -4,7 +4,9 @@ import { useState, useEffect } from 'react';
 import { collection, getDocs, query, orderBy, limit } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { DashboardStats, ExamAttempt } from '@/lib/types';
-import { analyzeExamData, analyzeWithCustomPrompt } from '@/lib/gemini';
+import { analyzeExamData } from '@/lib/gemini';
+import { analyzeWithEnhancedPrompt, validateUserQuery } from '@/lib/enhanced-gemini';
+import { formatAIResponse, createLoadingState, createErrorState } from '@/lib/ai-response-formatter';
 
 export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats>({
@@ -89,10 +91,10 @@ export default function DashboardPage() {
     setShowAIAnalysis(true);
     try {
       const analysis = await analyzeExamData(stats);
-      setAiAnalysis(analysis);
+      setAiAnalysis(formatAIResponse(analysis).html);
     } catch (error) {
       console.error('Error getting AI analysis:', error);
-      setAiAnalysis('Maaf, terjadi kesalahan saat menganalisis data. Silakan coba lagi.');
+      setAiAnalysis(createErrorState('Maaf, terjadi kesalahan saat menganalisis data. Silakan coba lagi.'));
     } finally {
       setAnalyzingWithAI(false);
     }
@@ -101,6 +103,13 @@ export default function DashboardPage() {
   const handleCustomPromptAnalysis = async () => {
     if (!customPrompt.trim()) {
       alert('Silakan masukkan pertanyaan untuk AI');
+      return;
+    }
+
+    // Validate user input
+    const validation = validateUserQuery(customPrompt);
+    if (!validation.isValid) {
+      alert(validation.message);
       return;
     }
 
@@ -113,23 +122,22 @@ export default function DashboardPage() {
     setShowAIAnalysis(true);
     setShowCustomPrompt(false);
     try {
-      const context = `
-Data Statistik:
-- Total Siswa: ${stats.totalStudents}
-- Total Ujian: ${stats.totalExams}
-- Total Percobaan Ujian: ${stats.totalAttempts}
-- Ujian Aktif: ${stats.activeExams}
-- Nilai Rata-rata: ${stats.averageScore}%
-
-Percobaan Ujian Terbaru:
-${stats.recentAttempts.map((attempt, i) => `${i + 1}. ${attempt.studentName} (${attempt.studentClass}) - ${attempt.examTitle}: ${attempt.score}% (${attempt.isPassed ? 'Lulus' : 'Tidak Lulus'})`).join('\n')}
-      `;
-      const analysis = await analyzeWithCustomPrompt(customPrompt, context);
-      setAiAnalysis(analysis);
+      // Use enhanced AI with smart context retrieval
+      const result = await analyzeWithEnhancedPrompt(customPrompt, {
+        maxContextSize: 8000,
+        useSmartRetrieval: true,
+        includeRecommendations: true
+      });
+      
+      setAiAnalysis(formatAIResponse(result.response).html);
       setCustomPrompt('');
+      
+      // Log context usage for debugging (remove in production)
+      console.log('Context sources used:', result.contextUsed);
+      console.log('Context size:', result.dataSize, 'characters');
     } catch (error) {
       console.error('Error getting AI analysis:', error);
-      setAiAnalysis('Maaf, terjadi kesalahan saat menganalisis data. Silakan coba lagi.');
+      setAiAnalysis(createErrorState(error instanceof Error ? error.message : 'Maaf, terjadi kesalahan saat menganalisis data. Silakan coba lagi.'));
     } finally {
       setAnalyzingWithAI(false);
     }
@@ -218,33 +226,33 @@ ${stats.recentAttempts.map((attempt, i) => `${i + 1}. ${attempt.studentName} (${
       )}
 
       {showAIAnalysis && (
-        <div className="mb-6 bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg border border-purple-200 p-6 shadow-sm">
-          <div className="flex items-start justify-between mb-3">
+        <div className="mb-6 bg-white rounded-lg border border-slate-200 shadow-sm">
+          <div className="flex items-start justify-between p-4 border-b border-slate-200">
             <div className="flex items-center gap-2">
-              <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
               </svg>
-              <h2 className="text-lg font-semibold text-purple-900">Analisis AI</h2>
+              <h2 className="text-lg font-semibold text-slate-900">Analisis AI</h2>
             </div>
             <button
               onClick={() => setShowAIAnalysis(false)}
-              className="text-purple-600 hover:text-purple-800"
+              className="text-slate-400 hover:text-slate-600 transition-colors"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
           </div>
-          {analyzingWithAI ? (
-            <div className="flex items-center gap-3 text-purple-700">
-              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-purple-600"></div>
-              <p>Sedang menganalisis data Anda...</p>
-            </div>
-          ) : (
-            <div className="prose prose-sm max-w-none text-slate-700">
-              <div className="whitespace-pre-wrap">{aiAnalysis}</div>
-            </div>
-          )}
+          <div className="p-4">
+            {analyzingWithAI ? (
+              <div dangerouslySetInnerHTML={{ __html: createLoadingState() }} />
+            ) : (
+              <div 
+                className="prose prose-sm max-w-none"
+                dangerouslySetInnerHTML={{ __html: aiAnalysis }}
+              />
+            )}
+          </div>
         </div>
       )}
 

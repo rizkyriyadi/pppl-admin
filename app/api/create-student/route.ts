@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create email from NISN
-    const email = `${nisn}@gmail.com`;
+    const email = `${nisn}@student.sdntugu1.sch.id`;
 
     // Check if NISN already exists in Firestore
     const usersSnapshot = await adminDb

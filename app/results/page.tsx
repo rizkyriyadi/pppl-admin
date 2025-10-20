@@ -30,6 +30,17 @@ export default function ResultsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [results, filterClass, filterExam, filterStatus]);
 
+  // Helper function to parse dates from Firestore
+  const parseDate = (dateValue: any): Date => {
+    if (dateValue && typeof dateValue.toDate === 'function') {
+      return dateValue.toDate();
+    }
+    if (typeof dateValue === 'string') {
+      return new Date(dateValue);
+    }
+    return new Date();
+  };
+
   const fetchResults = async () => {
     try {
       const q = query(collection(db, 'examAttempts'), orderBy('submittedAt', 'desc'));
@@ -37,8 +48,8 @@ export default function ResultsPage() {
       const resultsData: ExamAttempt[] = snapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
-        startedAt: doc.data().startedAt?.toDate() || new Date(),
-        submittedAt: doc.data().submittedAt?.toDate() || new Date(),
+        startedAt: parseDate(doc.data().startedAt),
+        submittedAt: parseDate(doc.data().submittedAt),
       } as ExamAttempt));
       setResults(resultsData);
       setFilteredResults(resultsData);
@@ -83,7 +94,11 @@ export default function ResultsPage() {
   };
 
   const getUniqueClasses = () => {
-    const classes = new Set(results.map((r) => r.studentClass));
+    const classes = new Set(
+      results
+        .map((r) => r.studentClass)
+        .filter((cls) => cls && cls.trim() !== '') // Filter out empty/null classes
+    );
     return Array.from(classes).sort();
   };
 
@@ -425,8 +440,8 @@ ${filteredResults.slice(0, 20).map((r, i) => `${i + 1}. ${r.studentName} (${r.st
                        focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             >
               <option value="">All Classes</option>
-              {getUniqueClasses().map((cls) => (
-                <option key={cls} value={cls}>
+              {getUniqueClasses().map((cls, index) => (
+                <option key={`class-${cls}-${index}`} value={cls}>
                   {cls}
                 </option>
               ))}
@@ -444,8 +459,8 @@ ${filteredResults.slice(0, 20).map((r, i) => `${i + 1}. ${r.studentName} (${r.st
                        focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             >
               <option value="">All Exams</option>
-              {getUniqueExams().map(([id, title]) => (
-                <option key={id} value={id}>
+              {getUniqueExams().map(([id, title], index) => (
+                <option key={`exam-${id}-${index}`} value={id}>
                   {title}
                 </option>
               ))}

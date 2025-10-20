@@ -42,11 +42,20 @@ export default function DashboardPage() {
 
         const recentAttempts: ExamAttempt[] = recentAttemptsSnap.docs.map((doc) => {
           const data = doc.data();
+          
+          // Handle both Firestore Timestamp and ISO string formats
+          const parseDate = (dateField: any) => {
+            if (!dateField) return new Date();
+            if (typeof dateField === 'string') return new Date(dateField);
+            if (dateField.toDate) return dateField.toDate();
+            return new Date();
+          };
+          
           return {
             id: doc.id,
             ...data,
-            startedAt: data.startedAt?.toDate() || new Date(),
-            submittedAt: data.submittedAt?.toDate() || new Date(),
+            startedAt: parseDate(data.startedAt),
+            submittedAt: parseDate(data.submittedAt),
           } as ExamAttempt;
         });
 

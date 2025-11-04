@@ -177,7 +177,7 @@ export function analyzeQueryIntent(query: string): {
   // Keywords for different data types
   const studentKeywords = ['siswa', 'murid', 'anak', 'kelas', 'nama'];
   const examKeywords = ['ujian', 'tes', 'soal', 'mata pelajaran', 'matematika', 'bahasa', 'ipa'];
-  const resultsKeywords = ['nilai', 'skor', 'hasil', 'lulus', 'gagal', 'prestasi'];
+  const resultsKeywords = ['nilai', 'skor', 'hasil', 'lulus', 'gagal', 'prestasi', 'sudah ujian', 'telah ujian', 'mengikuti ujian'];
   const questionKeywords = ['pertanyaan', 'soal', 'jawaban', 'pilihan'];
 
   // Class filters

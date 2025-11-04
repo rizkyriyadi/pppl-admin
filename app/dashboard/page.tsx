@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react';
 import { collection, getDocs, query, orderBy, limit } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { DashboardStats, ExamAttempt } from '@/lib/types';
-import { analyzeExamData } from '@/lib/gemini';
 import { analyzeWithEnhancedPrompt, validateUserQuery } from '@/lib/enhanced-gemini';
 import { formatAIResponse, createLoadingState, createErrorState } from '@/lib/ai-response-formatter';
 
@@ -81,25 +80,9 @@ export default function DashboardPage() {
     fetchStats();
   }, []);
 
-  const handleAIAnalysis = async () => {
-    if (stats.totalAttempts === 0) {
-      alert('Tidak ada data ujian untuk dianalisis');
-      return;
-    }
-
-    setAnalyzingWithAI(true);
-    setShowAIAnalysis(true);
-    try {
-      const analysis = await analyzeExamData(stats);
-      setAiAnalysis(formatAIResponse(analysis).html);
-    } catch (error) {
-      console.error('Error getting AI analysis:', error);
-      setAiAnalysis(createErrorState('Maaf, terjadi kesalahan saat menganalisis data. Silakan coba lagi.'));
-    } finally {
-      setAnalyzingWithAI(false);
-    }
-  };
-
+  // Remove unused handler to satisfy lint
+  // const handleAIAnalysis = async () => {};
+  
   const handleCustomPromptAnalysis = async () => {
     if (!customPrompt.trim()) {
       alert('Silakan masukkan pertanyaan untuk AI');
@@ -159,30 +142,6 @@ export default function DashboardPage() {
           <p className="text-slate-600 text-sm mt-1">Overview of exam system statistics</p>
         </div>
         <div className="flex gap-3">
-          <button
-            onClick={handleAIAnalysis}
-            disabled={analyzingWithAI || stats.totalAttempts === 0}
-            className="px-4 py-2 bg-purple-600 text-white rounded-md font-medium hover:bg-purple-700
-                     focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2
-                     disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-            </svg>
-            {analyzingWithAI ? 'Menganalisis...' : 'Analisis Otomatis'}
-          </button>
-          <button
-            onClick={() => setShowCustomPrompt(!showCustomPrompt)}
-            disabled={stats.totalAttempts === 0}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md font-medium hover:bg-blue-700
-                     focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2
-                     disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-            </svg>
-            Tanya AI
-          </button>
         </div>
       </div>
 

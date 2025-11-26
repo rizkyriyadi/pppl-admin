@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from '@google/generative-ai';
 
 const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
 
@@ -10,7 +10,15 @@ const genAI = new GoogleGenerativeAI(apiKey);
 
 export async function analyzeWithCustomPrompt(customPrompt: string, context: string) {
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
+    const model = genAI.getGenerativeModel({
+      model: 'gemini-2.5-flash',
+      safetySettings: [
+        { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+        { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
+        { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
+        { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+      ]
+    });
 
     const prompt = `Kamu adalah asisten analisis data untuk guru SD. Jawab pertanyaan berdasarkan DATA yang diberikan saja.
 
@@ -55,7 +63,15 @@ export async function analyzeExamData(data: {
   }>;
 }) {
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
+    const model = genAI.getGenerativeModel({
+      model: 'gemini-2.5-flash',
+      safetySettings: [
+        { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+        { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
+        { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
+        { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+      ]
+    });
 
     const prompt = `Kamu adalah asisten analisis data untuk guru SD. Analisis DATA berikut dengan OBJEKTIF.
 
@@ -109,7 +125,15 @@ export async function analyzeClassResults(results: Array<{
   submittedAt: Date;
 }>) {
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
+    const model = genAI.getGenerativeModel({
+      model: 'gemini-2.5-flash',
+      safetySettings: [
+        { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+        { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
+        { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
+        { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+      ]
+    });
 
     const avgScore = results.reduce((sum, r) => sum + r.score, 0) / results.length;
     const passRate = (results.filter(r => r.isPassed).length / results.length) * 100;
@@ -176,7 +200,15 @@ export async function getExamInsights(examTitle: string, results: Array<{
   isPassed: boolean;
 }>) {
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
+    const model = genAI.getGenerativeModel({
+      model: 'gemini-2.5-flash',
+      safetySettings: [
+        { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+        { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
+        { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
+        { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+      ]
+    });
 
     const avgScore = results.reduce((sum, r) => sum + r.score, 0) / results.length;
     const passRate = (results.filter(r => r.isPassed).length / results.length) * 100;
@@ -205,10 +237,10 @@ DATA UJIAN:
 - Waktu Rata-rata: ${Math.floor(avgTime / 60)} menit
 
 DISTRIBUSI NILAI:
-- Sangat Baik (≥90%): ${excellent} siswa (${(excellent/results.length*100).toFixed(0)}%)
-- Baik (75-89%): ${good} siswa (${(good/results.length*100).toFixed(0)}%)
-- Cukup (60-74%): ${average} siswa (${(average/results.length*100).toFixed(0)}%)
-- Kurang (<60%): ${poor} siswa (${(poor/results.length*100).toFixed(0)}%)
+- Sangat Baik (≥90%): ${excellent} siswa (${(excellent / results.length * 100).toFixed(0)}%)
+- Baik (75-89%): ${good} siswa (${(good / results.length * 100).toFixed(0)}%)
+- Cukup (60-74%): ${average} siswa (${(average / results.length * 100).toFixed(0)}%)
+- Kurang (<60%): ${poor} siswa (${(poor / results.length * 100).toFixed(0)}%)
 
 Berikan analisis dalam format:
 

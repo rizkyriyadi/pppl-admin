@@ -23,6 +23,7 @@ const items = [
   { name: 'Students', link: '/students' },
   { name: 'Results', link: '/results' },
   { name: 'Tanya AI', link: '/ai-chat' },
+  { name: 'Profile', link: '/dashboard/profile' },
 ];
 
 export default function Sidebar() {

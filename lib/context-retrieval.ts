@@ -1,8 +1,8 @@
-import { 
-  collection, 
-  getDocs, 
-  query, 
-  orderBy, 
+import {
+  collection,
+  getDocs,
+  query,
+  orderBy,
   limit
 } from 'firebase/firestore';
 import { db } from './firebase';
@@ -54,10 +54,10 @@ export async function getFullContext(): Promise<ContextData> {
           nisn: data.nisn,
           class: data.class,
           isActive: data.isActive,
-          createdAt: data.createdAt instanceof Date ? data.createdAt : 
-                    (data.createdAt?.toDate ? data.createdAt.toDate() : new Date()),
-          updatedAt: data.updatedAt instanceof Date ? data.updatedAt : 
-                    (data.updatedAt?.toDate ? data.updatedAt.toDate() : new Date())
+          createdAt: data.createdAt instanceof Date ? data.createdAt :
+            (data.createdAt?.toDate ? data.createdAt.toDate() : new Date()),
+          updatedAt: data.updatedAt instanceof Date ? data.updatedAt :
+            (data.updatedAt?.toDate ? data.updatedAt.toDate() : new Date())
         } as User;
       })
       .filter(user => user.role === 'student');
@@ -75,15 +75,15 @@ export async function getFullContext(): Promise<ContextData> {
         passingScore: data.passingScore,
         isActive: data.isActive,
         createdBy: data.createdBy,
-        createdAt: data.createdAt instanceof Date ? data.createdAt : 
-                  (data.createdAt?.toDate ? data.createdAt.toDate() : new Date()),
-        updatedAt: data.updatedAt instanceof Date ? data.updatedAt : 
-                  (data.updatedAt?.toDate ? data.updatedAt.toDate() : new Date()),
-        scheduledDate: data.scheduledDate instanceof Date ? data.scheduledDate : 
-                      (data.scheduledDate?.toDate ? data.scheduledDate.toDate() : undefined)
+        createdAt: data.createdAt instanceof Date ? data.createdAt :
+          (data.createdAt?.toDate ? data.createdAt.toDate() : new Date()),
+        updatedAt: data.updatedAt instanceof Date ? data.updatedAt :
+          (data.updatedAt?.toDate ? data.updatedAt.toDate() : new Date()),
+        scheduledDate: data.scheduledDate instanceof Date ? data.scheduledDate :
+          (data.scheduledDate?.toDate ? data.scheduledDate.toDate() : undefined)
       } as Exam;
     });
-    
+
     const examAttempts = attemptsSnapshot.docs.map(doc => {
       const data = doc.data();
       return {
@@ -101,10 +101,10 @@ export async function getFullContext(): Promise<ContextData> {
         unanswered: data.unanswered,
         timeSpent: data.timeSpent,
         isPassed: data.isPassed,
-        startedAt: data.startedAt instanceof Date ? data.startedAt : 
-                  (data.startedAt?.toDate ? data.startedAt.toDate() : new Date()),
-        submittedAt: data.submittedAt instanceof Date ? data.submittedAt : 
-                    (data.submittedAt?.toDate ? data.submittedAt.toDate() : new Date()),
+        startedAt: data.startedAt instanceof Date ? data.startedAt :
+          (data.startedAt?.toDate ? data.startedAt.toDate() : new Date()),
+        submittedAt: data.submittedAt instanceof Date ? data.submittedAt :
+          (data.submittedAt?.toDate ? data.submittedAt.toDate() : new Date()),
         status: data.status
       } as ExamAttempt;
     });
@@ -130,11 +130,11 @@ export async function getFullContext(): Promise<ContextData> {
     const totalStudents = students.length;
     const totalExams = exams.length;
     const totalAttempts = examAttempts.length;
-    const averageScore = totalAttempts > 0 
-      ? examAttempts.reduce((sum, attempt) => sum + attempt.score, 0) / totalAttempts 
+    const averageScore = totalAttempts > 0
+      ? examAttempts.reduce((sum, attempt) => sum + attempt.score, 0) / totalAttempts
       : 0;
-    const passRate = totalAttempts > 0 
-      ? (examAttempts.filter(attempt => attempt.isPassed).length / totalAttempts) * 100 
+    const passRate = totalAttempts > 0
+      ? (examAttempts.filter(attempt => attempt.isPassed).length / totalAttempts) * 100
       : 0;
     const activeExams = exams.filter(exam => exam.isActive).length;
 
@@ -173,7 +173,7 @@ export function analyzeQueryIntent(query: string): {
   };
 } {
   const lowerQuery = query.toLowerCase();
-  
+
   // Keywords for different data types
   const studentKeywords = ['siswa', 'murid', 'anak', 'kelas', 'nama'];
   const examKeywords = ['ujian', 'tes', 'soal', 'mata pelajaran', 'matematika', 'bahasa', 'ipa'];
@@ -204,10 +204,10 @@ export function analyzeQueryIntent(query: string): {
 export async function getRelevantContext(userQuery: string): Promise<RelevantContext> {
   const intent = analyzeQueryIntent(userQuery);
   const fullContext = await getFullContext();
-  
+
   const contextParts: string[] = [];
-    const sources: string[] = [];
-  
+  const sources: string[] = [];
+
   // Always include summary statistics
   contextParts.push(`STATISTIK UMUM:
 - Total Siswa: ${fullContext.summary.totalStudents}
@@ -221,18 +221,18 @@ export async function getRelevantContext(userQuery: string): Promise<RelevantCon
   // Add student data if needed
   if (intent.needsStudentData) {
     let studentsToInclude = fullContext.students;
-    
+
     if (intent.specificFilters.studentClass) {
       studentsToInclude = studentsToInclude.filter(
         student => student.class?.toLowerCase().includes(intent.specificFilters.studentClass!)
       );
     }
-    
+
     // Limit to prevent token overflow
-    const studentList = studentsToInclude.slice(0, 50).map((student, i) => 
+    const studentList = studentsToInclude.slice(0, 50).map((student, i) =>
       `${i + 1}. ${student.name} (${student.class}) - NISN: ${student.nisn}`
     ).join('\n');
-    
+
     contextParts.push(`DAFTAR SISWA (${Math.min(studentsToInclude.length, 50)} dari ${studentsToInclude.length}):\n${studentList}`);
     sources.push('students');
   }
@@ -240,17 +240,17 @@ export async function getRelevantContext(userQuery: string): Promise<RelevantCon
   // Add exam data if needed
   if (intent.needsExamData) {
     let examsToInclude = fullContext.exams;
-    
+
     if (intent.specificFilters.examSubject) {
       examsToInclude = examsToInclude.filter(
         exam => exam.subject?.toLowerCase().includes(intent.specificFilters.examSubject!)
       );
     }
-    
-    const examList = examsToInclude.slice(0, 20).map((exam, i) => 
+
+    const examList = examsToInclude.slice(0, 20).map((exam, i) =>
       `${i + 1}. ${exam.title} (${exam.subject}) - Kelas ${exam.grade}, ${exam.totalQuestions} soal, ${exam.duration} menit`
     ).join('\n');
-    
+
     contextParts.push(`DAFTAR UJIAN (${Math.min(examsToInclude.length, 20)} dari ${examsToInclude.length}):\n${examList}`);
     sources.push('exams');
   }
@@ -258,7 +258,7 @@ export async function getRelevantContext(userQuery: string): Promise<RelevantCon
   // Add results data if needed
   if (intent.needsResultsData) {
     let attemptsToInclude = fullContext.examAttempts;
-    
+
     if (intent.specificFilters.timeRange === 'recent') {
       const oneWeekAgo = new Date();
       oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
@@ -266,27 +266,29 @@ export async function getRelevantContext(userQuery: string): Promise<RelevantCon
         attempt => attempt.submittedAt >= oneWeekAgo
       );
     }
-    
+
     if (intent.specificFilters.studentClass) {
       attemptsToInclude = attemptsToInclude.filter(
         attempt => attempt.studentClass?.toLowerCase().includes(intent.specificFilters.studentClass!)
       );
     }
-    
+
     // Limit and sort by most recent
-    const resultsList = attemptsToInclude
-      .sort((a, b) => b.submittedAt.getTime() - a.submittedAt.getTime())
-      .slice(0, 30)
-      .map((attempt, i) => 
-        `${i + 1}. ${attempt.studentName} (${attempt.studentClass}) - ${attempt.examTitle}: ${attempt.score}% (${attempt.isPassed ? 'Lulus' : 'Tidak Lulus'})`
-      ).join('\n');
-    
+    const resultsList = attemptsToInclude.length > 0
+      ? attemptsToInclude
+        .sort((a, b) => b.submittedAt.getTime() - a.submittedAt.getTime())
+        .slice(0, 30)
+        .map((attempt, i) =>
+          `${i + 1}. ${attempt.studentName} (${attempt.studentClass}) - ${attempt.examTitle}: ${attempt.score}% (${attempt.isPassed ? 'Lulus' : 'Tidak Lulus'})`
+        ).join('\n')
+      : "BELUM ADA DATA HASIL UJIAN YANG TERCATAT.";
+
     contextParts.push(`HASIL UJIAN TERBARU (${Math.min(attemptsToInclude.length, 30)} dari ${attemptsToInclude.length}):\n${resultsList}`);
     sources.push('examAttempts');
   }
 
   const contextText = contextParts.join('\n\n');
-  
+
   return {
     contextText,
     dataSize: contextText.length,
@@ -301,11 +303,11 @@ export function chunkContext(context: string, maxChunkSize: number = 8000): stri
   if (context.length <= maxChunkSize) {
     return [context];
   }
-  
+
   const chunks: string[] = [];
   const sections = context.split('\n\n');
   let currentChunk = '';
-  
+
   for (const section of sections) {
     if (currentChunk.length + section.length + 2 <= maxChunkSize) {
       currentChunk += (currentChunk ? '\n\n' : '') + section;
@@ -316,11 +318,11 @@ export function chunkContext(context: string, maxChunkSize: number = 8000): stri
       currentChunk = section;
     }
   }
-  
+
   if (currentChunk) {
     chunks.push(currentChunk);
   }
-  
+
   return chunks;
 }
 
@@ -331,11 +333,11 @@ export function summarizeContext(context: ContextData): string {
   const topPerformers = context.examAttempts
     .sort((a, b) => b.score - a.score)
     .slice(0, 5);
-    
+
   const lowPerformers = context.examAttempts
     .sort((a, b) => a.score - b.score)
     .slice(0, 5);
-    
+
   const subjectPerformance = context.examAttempts.reduce((acc, attempt) => {
     const subject = attempt.examTitle?.split(' ')[0] || 'Unknown';
     if (!acc[subject]) {
@@ -356,12 +358,12 @@ PERFORMA TERENDAH:
 ${lowPerformers.map((attempt, i) => `${i + 1}. ${attempt.studentName}: ${attempt.score}%`).join('\n')}
 
 PERFORMA PER MATA PELAJARAN:
-${Object.entries(subjectPerformance).map(([subject, data]) => 
-  `${subject}: ${data.total.toFixed(1)}% (${data.count} percobaan)`
-).join('\n')}
+${Object.entries(subjectPerformance).map(([subject, data]) =>
+    `${subject}: ${data.total.toFixed(1)}% (${data.count} percobaan)`
+  ).join('\n')}
 
 DISTRIBUSI KELAS:
-${Array.from(new Set(context.students.map(s => s.class))).map(cls => 
-  `${cls}: ${context.students.filter(s => s.class === cls).length} siswa`
-).join('\n')}`;
+${Array.from(new Set(context.students.map(s => s.class))).map(cls =>
+    `${cls}: ${context.students.filter(s => s.class === cls).length} siswa`
+  ).join('\n')}`;
 }

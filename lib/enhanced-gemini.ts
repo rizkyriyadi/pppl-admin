@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from '@google/generative-ai';
 import { getRelevantContext, chunkContext, summarizeContext, getFullContext } from './context-retrieval';
 import type { ExamAttempt } from './types';
 
@@ -26,12 +26,30 @@ export async function analyzeWithEnhancedPrompt(
   dataSize: number;
 }> {
   try {
-    const model = genAI.getGenerativeModel({ 
-      model: 'gemini-2.0-flash-exp',
+    const model = genAI.getGenerativeModel({
+      model: 'gemini-2.5-flash',
+      safetySettings: [
+        {
+          category: HarmCategory.HARM_CATEGORY_HARASSMENT,
+          threshold: HarmBlockThreshold.BLOCK_NONE,
+        },
+        {
+          category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+          threshold: HarmBlockThreshold.BLOCK_NONE,
+        },
+        {
+          category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+          threshold: HarmBlockThreshold.BLOCK_NONE,
+        },
+        {
+          category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+          threshold: HarmBlockThreshold.BLOCK_NONE,
+        },
+      ],
       generationConfig: {
-        temperature: 0.3, // Lower temperature for more consistent, factual responses
+        temperature: 0.3,
         topP: 0.8,
-        maxOutputTokens: 1024,
+        maxOutputTokens: 2048,
       }
     });
 
@@ -45,7 +63,7 @@ export async function analyzeWithEnhancedPrompt(
       const relevantContext = await getRelevantContext(userQuery);
       contextData = relevantContext.contextText;
       contextSources = relevantContext.sources;
-      
+
       // If context is too large, chunk it or summarize
       if (relevantContext.dataSize > maxContextSize) {
         const fullContext = await getFullContext();
@@ -130,7 +148,7 @@ JAWABAN:`;
 
   } catch (error) {
     console.error('Error in enhanced AI analysis:', error);
-    
+
     // Provide helpful error messages
     if (error instanceof Error) {
       if (error.message.includes('quota')) {
@@ -139,7 +157,7 @@ JAWABAN:`;
         throw new Error('Pertanyaan tidak dapat diproses karena alasan keamanan. Silakan reformulasi pertanyaan Anda.');
       }
     }
-    
+
     throw new Error('Terjadi kesalahan saat menganalisis data. Silakan coba lagi atau hubungi administrator.');
   }
 }
@@ -153,22 +171,30 @@ export async function analyzeExamPerformance(
   timeRange?: 'week' | 'month' | 'all'
 ): Promise<string> {
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
+    const model = genAI.getGenerativeModel({
+      model: 'gemini-2.5-flash',
+      safetySettings: [
+        { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+        { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
+        { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
+        { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+      ]
+    });
     const fullContext = await getFullContext();
-    
+
     let filteredAttempts = fullContext.examAttempts;
-    
+
     // Apply filters
     if (examId) {
       filteredAttempts = filteredAttempts.filter(attempt => attempt.examId === examId);
     }
-    
+
     if (classFilter) {
-      filteredAttempts = filteredAttempts.filter(attempt => 
+      filteredAttempts = filteredAttempts.filter(attempt =>
         attempt.studentClass?.toLowerCase().includes(classFilter.toLowerCase())
       );
     }
-    
+
     if (timeRange && timeRange !== 'all') {
       const cutoffDate = new Date();
       if (timeRange === 'week') {
@@ -187,13 +213,13 @@ export async function analyzeExamPerformance(
     const totalAttempts = filteredAttempts.length;
     const averageScore = filteredAttempts.reduce((sum, attempt) => sum + attempt.score, 0) / totalAttempts;
     const passRate = (filteredAttempts.filter(attempt => attempt.isPassed).length / totalAttempts) * 100;
-    
+
     // Performance distribution
     const excellent = filteredAttempts.filter(attempt => attempt.score >= 90).length;
     const good = filteredAttempts.filter(attempt => attempt.score >= 75 && attempt.score < 90).length;
     const average = filteredAttempts.filter(attempt => attempt.score >= 60 && attempt.score < 75).length;
     const poor = filteredAttempts.filter(attempt => attempt.score < 60).length;
-    
+
     // Top and bottom performers
     const sortedByScore = [...filteredAttempts].sort((a, b) => b.score - a.score);
     const topPerformers = sortedByScore.slice(0, 3);
@@ -207,10 +233,10 @@ STATISTIK UMUM:
 - Tingkat Kelulusan: ${passRate.toFixed(1)}%
 
 DISTRIBUSI PERFORMA:
-- Sangat Baik (≥90%): ${excellent} siswa (${(excellent/totalAttempts*100).toFixed(0)}%)
-- Baik (75-89%): ${good} siswa (${(good/totalAttempts*100).toFixed(0)}%)
-- Cukup (60-74%): ${average} siswa (${(average/totalAttempts*100).toFixed(0)}%)
-- Perlu Perbaikan (<60%): ${poor} siswa (${(poor/totalAttempts*100).toFixed(0)}%)
+- Sangat Baik (≥90%): ${excellent} siswa (${(excellent / totalAttempts * 100).toFixed(0)}%)
+- Baik (75-89%): ${good} siswa (${(good / totalAttempts * 100).toFixed(0)}%)
+- Cukup (60-74%): ${average} siswa (${(average / totalAttempts * 100).toFixed(0)}%)
+- Perlu Perbaikan (<60%): ${poor} siswa (${(poor / totalAttempts * 100).toFixed(0)}%)
 
 PERFORMA TERTINGGI:
 ${topPerformers.map((attempt, i) => `${i + 1}. ${attempt.studentName} (${attempt.studentClass}): ${attempt.score}%`).join('\n')}
@@ -219,9 +245,9 @@ PERFORMA TERENDAH:
 ${bottomPerformers.map((attempt, i) => `${i + 1}. ${attempt.studentName} (${attempt.studentClass}): ${attempt.score}%`).join('\n')}
 
 DETAIL PERCOBAAN TERBARU:
-${filteredAttempts.slice(0, 10).map((attempt, i) => 
-  `${i + 1}. ${attempt.studentName} (${attempt.studentClass}) - ${attempt.examTitle}: ${attempt.score}% (${Math.floor(attempt.timeSpent/60)} menit)`
-).join('\n')}`;
+${filteredAttempts.slice(0, 10).map((attempt, i) =>
+      `${i + 1}. ${attempt.studentName} (${attempt.studentClass}) - ${attempt.examTitle}: ${attempt.score}% (${Math.floor(attempt.timeSpent / 60)} menit)`
+    ).join('\n')}`;
 
     const prompt = `Anda adalah konsultan pendidikan yang menganalisis performa ujian untuk sekolah dasar.
 
@@ -281,7 +307,7 @@ export async function generateClassInsights(
       const totalStudents = examResults.length;
       const avgScore = examResults.reduce((sum, r) => sum + r.score, 0) / totalStudents;
       const passRate = (examResults.filter(r => r.isPassed).length / totalStudents) * 100;
-      
+
       // Get unique classes and exams
       const classes = [...new Set(examResults.map(r => r.studentClass))];
       const exams = [...new Set(examResults.map(r => r.examTitle))];
@@ -298,7 +324,7 @@ export async function generateClassInsights(
       // Add detailed results (limited by context size)
       const maxResults = Math.min(examResults.length, Math.floor(maxContextSize / 100));
       contextData += `DETAIL HASIL UJIAN (${maxResults} dari ${totalStudents} siswa):\n`;
-      
+
       examResults.slice(0, maxResults).forEach((result, i) => {
         contextData += `${i + 1}. ${result.studentName} (${result.studentClass}) - ${result.examTitle}:
    Nilai: ${result.score}% (${result.correctAnswers}/${result.totalQuestions} benar)
@@ -318,7 +344,15 @@ export async function generateClassInsights(
       contextSources.push('chunked_data');
     }
 
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
+    const model = genAI.getGenerativeModel({
+      model: 'gemini-2.5-flash',
+      safetySettings: [
+        { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+        { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
+        { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
+        { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+      ]
+    });
 
     const systemPrompt = `Anda adalah asisten AI untuk analisis hasil ujian sekolah SDN TUGU 1. 
 Tugas Anda adalah menganalisis data hasil ujian siswa dan memberikan wawasan yang berguna untuk guru dan kepala sekolah.
@@ -375,7 +409,7 @@ ANALISIS:`;
 
   } catch (error) {
     console.error('Error in class insights generation:', error);
-    
+
     if (error instanceof Error) {
       if (error.message.includes('quota')) {
         throw new Error('Kuota API Gemini telah habis. Silakan coba lagi nanti atau hubungi administrator.');
@@ -383,7 +417,7 @@ ANALISIS:`;
         throw new Error('Data tidak dapat diproses karena alasan keamanan. Silakan periksa kembali data ujian.');
       }
     }
-    
+
     throw new Error('Terjadi kesalahan saat menganalisis data kelas. Silakan coba lagi.');
   }
 }
@@ -395,23 +429,23 @@ export function validateUserQuery(query: string): { isValid: boolean; message?: 
   if (!query || query.trim().length === 0) {
     return { isValid: false, message: 'Pertanyaan tidak boleh kosong.' };
   }
-  
+
   if (query.length > 500) {
     return { isValid: false, message: 'Pertanyaan terlalu panjang. Maksimal 500 karakter.' };
   }
-  
+
   // Check for potentially harmful content
   const harmfulPatterns = [
     /delete|drop|truncate|update.*set/i,
     /script|javascript|eval/i,
     /<script|<iframe|<object/i
   ];
-  
+
   for (const pattern of harmfulPatterns) {
     if (pattern.test(query)) {
       return { isValid: false, message: 'Pertanyaan mengandung konten yang tidak diizinkan.' };
     }
   }
-  
+
   return { isValid: true };
 }

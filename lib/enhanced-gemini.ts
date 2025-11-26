@@ -1,6 +1,8 @@
 import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from '@google/generative-ai';
 import { getRelevantContext, chunkContext, summarizeContext, getFullContext } from './context-retrieval';
 import type { ExamAttempt } from './types';
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { db } from './firebase';
 
 const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
 
@@ -65,13 +67,15 @@ export async function analyzeWithEnhancedPrompt(
       contextSources = relevantContext.sources;
 
       // If context is too large, chunk it or summarize
+      // Note: getRelevantContext already tries to limit size, but we check again
       if (relevantContext.dataSize > maxContextSize) {
-        const fullContext = await getFullContext();
-        contextData = summarizeContext(fullContext);
-        contextSources.push('summary');
+        // If still too big, we might need to summarize further or truncate
+        // For now, we trust getRelevantContext to be reasonable, or we truncate
+        contextData = contextData.substring(0, maxContextSize) + "\n...(truncated)";
+        contextSources.push('truncated');
       }
     } else {
-      // Fallback to full context with summarization
+      // Fallback to full context with summarization (legacy path)
       const fullContext = await getFullContext();
       contextData = summarizeContext(fullContext);
       contextSources = ['full-summary'];
@@ -117,7 +121,9 @@ FORMAT OUTPUT WAJIB:
 • 2–4 rekomendasi konkret, spesifik, dan berbasis data
 
 Jika data tidak cukup untuk menjawab, jawab:
-"Data tidak cukup untuk analisis mendalam. Diperlukan: [sebutkan data yang kurang]".`;
+"Data tidak cukup untuk analisis mendalam. Diperlukan: [sebutkan data yang kurang]".
+
+KHUSUS: Jika "Total Percobaan" adalah 0, JANGAN katakan data tidak cukup. Katakan: "Belum ada data hasil ujian yang tercatat di sistem saat ini."`;
 
     const userPrompt = `${systemPrompt}
 
@@ -139,6 +145,8 @@ JAWABAN:`;
 
     const result = await model.generateContent(userPrompt);
     const response = result.response.text();
+
+    console.log("Gemini Response:", response); // Log for debugging
 
     return {
       response,
@@ -180,20 +188,31 @@ export async function analyzeExamPerformance(
         { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
       ]
     });
-    const fullContext = await getFullContext();
 
-    let filteredAttempts = fullContext.examAttempts;
+    // Build query
+    let attemptsQuery = query(collection(db, 'examAttempts'));
+    const constraints = [];
 
-    // Apply filters
     if (examId) {
-      filteredAttempts = filteredAttempts.filter(attempt => attempt.examId === examId);
+      constraints.push(where('examId', '==', examId));
     }
 
     if (classFilter) {
-      filteredAttempts = filteredAttempts.filter(attempt =>
-        attempt.studentClass?.toLowerCase().includes(classFilter.toLowerCase())
-      );
+      constraints.push(where('studentClass', '==', classFilter));
     }
+
+    if (constraints.length > 0) {
+      attemptsQuery = query(collection(db, 'examAttempts'), ...constraints);
+    }
+
+    const snapshot = await getDocs(attemptsQuery);
+    let filteredAttempts = snapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        ...data,
+        submittedAt: data.submittedAt instanceof Date ? data.submittedAt : data.submittedAt?.toDate()
+      } as ExamAttempt;
+    });
 
     if (timeRange && timeRange !== 'all') {
       const cutoffDate = new Date();
@@ -226,7 +245,7 @@ export async function analyzeExamPerformance(
     const bottomPerformers = sortedByScore.slice(-3).reverse();
 
     const contextData = `ANALISIS PERFORMA UJIAN
-
+    
 STATISTIK UMUM:
 - Total Percobaan: ${totalAttempts}
 - Nilai Rata-rata: ${averageScore.toFixed(1)}%

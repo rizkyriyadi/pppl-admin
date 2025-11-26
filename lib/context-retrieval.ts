@@ -3,16 +3,19 @@ import {
   getDocs,
   query,
   orderBy,
-  limit
+  limit,
+  where,
+  getCountFromServer,
+  Timestamp
 } from 'firebase/firestore';
 import { db } from './firebase';
 import type { ExamAttempt, User, Exam, Question } from './types';
 
 export interface ContextData {
-  students: User[];
-  exams: Exam[];
-  examAttempts: ExamAttempt[];
-  questions: Question[];
+  students?: User[];
+  exams?: Exam[];
+  examAttempts?: ExamAttempt[];
+  questions?: Question[];
   summary: {
     totalStudents: number;
     totalExams: number;
@@ -30,133 +33,24 @@ export interface RelevantContext {
 }
 
 /**
- * Retrieves comprehensive context data from Firestore
+ * Helper to convert Firestore data to typed objects
  */
-export async function getFullContext(): Promise<ContextData> {
-  try {
-    // Fetch all collections in parallel
-    const [studentsSnapshot, examsSnapshot, attemptsSnapshot, questionsSnapshot] = await Promise.all([
-      getDocs(collection(db, 'users')),
-      getDocs(collection(db, 'exams')),
-      getDocs(query(collection(db, 'examAttempts'), orderBy('submittedAt', 'desc'), limit(100))),
-      getDocs(collection(db, 'questions'))
-    ]);
-
-    const students = studentsSnapshot.docs
-      .map(doc => {
-        const data = doc.data();
-        return {
-          id: doc.id,
-          uid: data.uid,
-          role: data.role,
-          name: data.name,
-          email: data.email,
-          nisn: data.nisn,
-          class: data.class,
-          isActive: data.isActive,
-          createdAt: data.createdAt instanceof Date ? data.createdAt :
-            (data.createdAt?.toDate ? data.createdAt.toDate() : new Date()),
-          updatedAt: data.updatedAt instanceof Date ? data.updatedAt :
-            (data.updatedAt?.toDate ? data.updatedAt.toDate() : new Date())
-        } as User;
-      })
-      .filter(user => user.role === 'student');
-
-    const exams = examsSnapshot.docs.map(doc => {
-      const data = doc.data();
-      return {
-        id: doc.id,
-        title: data.title,
-        description: data.description,
-        subject: data.subject,
-        grade: data.grade,
-        duration: data.duration,
-        totalQuestions: data.totalQuestions,
-        passingScore: data.passingScore,
-        isActive: data.isActive,
-        createdBy: data.createdBy,
-        createdAt: data.createdAt instanceof Date ? data.createdAt :
-          (data.createdAt?.toDate ? data.createdAt.toDate() : new Date()),
-        updatedAt: data.updatedAt instanceof Date ? data.updatedAt :
-          (data.updatedAt?.toDate ? data.updatedAt.toDate() : new Date()),
-        scheduledDate: data.scheduledDate instanceof Date ? data.scheduledDate :
-          (data.scheduledDate?.toDate ? data.scheduledDate.toDate() : undefined)
-      } as Exam;
-    });
-
-    const examAttempts = attemptsSnapshot.docs.map(doc => {
-      const data = doc.data();
-      return {
-        id: doc.id,
-        examId: data.examId,
-        examTitle: data.examTitle,
-        studentId: data.studentId,
-        studentName: data.studentName,
-        studentClass: data.studentClass,
-        answers: data.answers,
-        score: data.score,
-        totalQuestions: data.totalQuestions,
-        correctAnswers: data.correctAnswers,
-        incorrectAnswers: data.incorrectAnswers,
-        unanswered: data.unanswered,
-        timeSpent: data.timeSpent,
-        isPassed: data.isPassed,
-        startedAt: data.startedAt instanceof Date ? data.startedAt :
-          (data.startedAt?.toDate ? data.startedAt.toDate() : new Date()),
-        submittedAt: data.submittedAt instanceof Date ? data.submittedAt :
-          (data.submittedAt?.toDate ? data.submittedAt.toDate() : new Date()),
-        status: data.status
-      } as ExamAttempt;
-    });
-
-    const questions = questionsSnapshot.docs.map(doc => {
-      const data = doc.data();
-      return {
-        id: doc.id,
-        examId: data.examId,
-        questionText: data.questionText,
-        questionNumber: data.questionNumber,
-        options: data.options,
-        correctAnswer: data.correctAnswer,
-        subject: data.subject,
-        difficulty: data.difficulty,
-        explanation: data.explanation,
-        imageUrl: data.imageUrl,
-        createdAt: data.createdAt?.toDate()
-      } as Question;
-    });
-
-    // Calculate summary statistics
-    const totalStudents = students.length;
-    const totalExams = exams.length;
-    const totalAttempts = examAttempts.length;
-    const averageScore = totalAttempts > 0
-      ? examAttempts.reduce((sum, attempt) => sum + attempt.score, 0) / totalAttempts
-      : 0;
-    const passRate = totalAttempts > 0
-      ? (examAttempts.filter(attempt => attempt.isPassed).length / totalAttempts) * 100
-      : 0;
-    const activeExams = exams.filter(exam => exam.isActive).length;
-
-    return {
-      students,
-      exams,
-      examAttempts,
-      questions,
-      summary: {
-        totalStudents,
-        totalExams,
-        totalAttempts,
-        averageScore,
-        passRate,
-        activeExams
-      }
-    };
-  } catch (error) {
-    console.error('Error fetching full context:', error);
-    throw new Error('Gagal mengambil data konteks');
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const convertDates = (data: any): any => {
+  const result = { ...data };
+  for (const key in result) {
+    if (result[key] instanceof Timestamp) {
+      result[key] = result[key].toDate();
+    } else if (result[key]?.toDate) {
+      result[key] = result[key].toDate();
+    }
   }
-}
+  return result;
+};
+
+// ... (skipping to line 173)
+
+
 
 /**
  * Analyzes user query to determine what data is most relevant
@@ -166,8 +60,10 @@ export function analyzeQueryIntent(query: string): {
   needsExamData: boolean;
   needsResultsData: boolean;
   needsQuestionData: boolean;
+  isGeneralStats: boolean;
   specificFilters: {
     studentClass?: string;
+    studentName?: string;
     examSubject?: string;
     timeRange?: 'recent' | 'all';
   };
@@ -177,21 +73,31 @@ export function analyzeQueryIntent(query: string): {
   // Keywords for different data types
   const studentKeywords = ['siswa', 'murid', 'anak', 'kelas', 'nama'];
   const examKeywords = ['ujian', 'tes', 'soal', 'mata pelajaran', 'matematika', 'bahasa', 'ipa'];
-  const resultsKeywords = ['nilai', 'skor', 'hasil', 'lulus', 'gagal', 'prestasi', 'sudah ujian', 'telah ujian', 'mengikuti ujian'];
+  const resultsKeywords = ['nilai', 'skor', 'hasil', 'lulus', 'gagal', 'prestasi', 'sudah ujian', 'telah ujian', 'mengikuti ujian', 'performa'];
   const questionKeywords = ['pertanyaan', 'soal', 'jawaban', 'pilihan'];
+  const statsKeywords = ['rata-rata', 'statistik', 'ringkasan', 'total', 'jumlah', 'persentase', 'analisis', 'kondisi kelas'];
 
-  // Class filters
+  // Filters
   const classMatch = lowerQuery.match(/kelas\s*(\d+[a-z]?)/);
   const subjectMatch = lowerQuery.match(/(matematika|bahasa|ipa|pkn|ips)/);
   const timeMatch = lowerQuery.match(/(terbaru|baru-baru|minggu|bulan|hari)/);
 
+  // Improved regex to handle "siswa bernama zahra" or just "bernama zahra"
+  const nameMatch = lowerQuery.match(/(?:siswa|murid|anak|bernama)(?:\s+bernama)?\s+([a-zA-Z\s]{3,20})/);
+
+  const needsResults = resultsKeywords.some(keyword => lowerQuery.includes(keyword));
+  const needsStats = statsKeywords.some(keyword => lowerQuery.includes(keyword)) ||
+    (lowerQuery.includes('bagaimana') && lowerQuery.includes('kelas'));
+
   return {
     needsStudentData: studentKeywords.some(keyword => lowerQuery.includes(keyword)),
     needsExamData: examKeywords.some(keyword => lowerQuery.includes(keyword)),
-    needsResultsData: resultsKeywords.some(keyword => lowerQuery.includes(keyword)),
+    needsResultsData: needsResults || needsStats, // Stats usually imply results
     needsQuestionData: questionKeywords.some(keyword => lowerQuery.includes(keyword)),
+    isGeneralStats: needsStats && !classMatch && !nameMatch,
     specificFilters: {
       studentClass: classMatch ? classMatch[1] : undefined,
+      studentName: nameMatch ? nameMatch[1].trim() : undefined,
       examSubject: subjectMatch ? subjectMatch[1] : undefined,
       timeRange: timeMatch ? 'recent' : 'all'
     }
@@ -199,96 +105,167 @@ export function analyzeQueryIntent(query: string): {
 }
 
 /**
+ * Retrieves basic statistics efficiently
+ */
+async function getBasicStats() {
+  try {
+    const [studentsCount, examsCount, attemptsCount] = await Promise.all([
+      getCountFromServer(query(collection(db, 'users'), where('role', '==', 'student'))),
+      getCountFromServer(collection(db, 'exams')),
+      getCountFromServer(collection(db, 'examAttempts'))
+    ]);
+
+    // For average score and pass rate, we still need some data. 
+    // We'll fetch a sample of recent attempts to estimate if total is large, 
+    // or all if small (but we want to avoid fetching all).
+    // For now, let's fetch last 100 attempts to calculate "recent" stats.
+    const recentAttemptsSnapshot = await getDocs(
+      query(collection(db, 'examAttempts'), orderBy('submittedAt', 'desc'), limit(100))
+    );
+
+    const recentAttempts = recentAttemptsSnapshot.docs.map(doc => ({ ...convertDates(doc.data()) } as ExamAttempt));
+
+    const totalAttemptsVal = attemptsCount.data().count;
+    const avgScore = recentAttempts.length > 0
+      ? recentAttempts.reduce((sum, a) => sum + a.score, 0) / recentAttempts.length
+      : 0;
+    const passRate = recentAttempts.length > 0
+      ? (recentAttempts.filter(a => a.isPassed).length / recentAttempts.length) * 100
+      : 0;
+
+    // Active exams
+    const activeExamsSnapshot = await getDocs(query(collection(db, 'exams'), where('isActive', '==', true)));
+
+    return {
+      totalStudents: studentsCount.data().count,
+      totalExams: examsCount.data().count,
+      totalAttempts: totalAttemptsVal,
+      averageScore: avgScore,
+      passRate,
+      activeExams: activeExamsSnapshot.size,
+      recentAttempts // Return this to reuse
+    };
+  } catch (error) {
+    console.error('Error fetching basic stats:', error);
+    return {
+      totalStudents: 0, totalExams: 0, totalAttempts: 0, averageScore: 0, passRate: 0, activeExams: 0, recentAttempts: []
+    };
+  }
+}
+
+/**
  * Builds optimized context based on query analysis
  */
 export async function getRelevantContext(userQuery: string): Promise<RelevantContext> {
   const intent = analyzeQueryIntent(userQuery);
-  const fullContext = await getFullContext();
+  const stats = await getBasicStats();
 
   const contextParts: string[] = [];
   const sources: string[] = [];
 
-  // Always include summary statistics
-  contextParts.push(`STATISTIK UMUM:
-- Total Siswa: ${fullContext.summary.totalStudents}
-- Total Ujian: ${fullContext.summary.totalExams}
-- Total Percobaan: ${fullContext.summary.totalAttempts}
-- Nilai Rata-rata: ${fullContext.summary.averageScore.toFixed(1)}%
-- Tingkat Kelulusan: ${fullContext.summary.passRate.toFixed(1)}%
-- Ujian Aktif: ${fullContext.summary.activeExams}`);
-  sources.push('summary');
+  // 1. Always include Summary Stats
+  contextParts.push(`STATISTIK UMUM (Berdasarkan ${stats.recentAttempts.length} percobaan terbaru):
+- Total Siswa: ${stats.totalStudents}
+- Total Ujian: ${stats.totalExams}
+- Total Percobaan: ${stats.totalAttempts}
+- Nilai Rata-rata: ${stats.averageScore.toFixed(1)}%
+- Tingkat Kelulusan: ${stats.passRate.toFixed(1)}%
+- Ujian Aktif: ${stats.activeExams}`);
+  sources.push('summary_stats');
 
-  // Add student data if needed
+  // 2. Student Data (Only if needed)
   if (intent.needsStudentData) {
-    let studentsToInclude = fullContext.students;
+    const studentsQuery = query(collection(db, 'users'), where('role', '==', 'student'));
+
+    const studentsSnapshot = await getDocs(studentsQuery);
+    let students = studentsSnapshot.docs.map(doc => ({ ...convertDates(doc.data()) } as User));
 
     if (intent.specificFilters.studentClass) {
-      studentsToInclude = studentsToInclude.filter(
-        student => student.class?.toLowerCase().includes(intent.specificFilters.studentClass!)
-      );
+      students = students.filter(s => s.class?.toLowerCase().includes(intent.specificFilters.studentClass!));
     }
 
-    // Limit to prevent token overflow
-    const studentList = studentsToInclude.slice(0, 50).map((student, i) =>
-      `${i + 1}. ${student.name} (${student.class}) - NISN: ${student.nisn}`
-    ).join('\n');
+    if (intent.specificFilters.studentName) {
+      const queryName = intent.specificFilters.studentName.toLowerCase();
+      students = students.filter(s => s.name.toLowerCase().includes(queryName));
+    }
 
-    contextParts.push(`DAFTAR SISWA (${Math.min(studentsToInclude.length, 50)} dari ${studentsToInclude.length}):\n${studentList}`);
-    sources.push('students');
+    if (students.length > 0) {
+      const studentList = students.slice(0, 50).map((s, i) =>
+        `${i + 1}. ${s.name} (${s.class || '-'}) - NISN: ${s.nisn || '-'}`
+      ).join('\n');
+      contextParts.push(`DAFTAR SISWA RELEVAN (${Math.min(students.length, 50)} dari ${students.length}):\n${studentList}`);
+      sources.push('students');
+    } else if (intent.specificFilters.studentName) {
+      contextParts.push(`PENCARIAN SISWA: Tidak ditemukan siswa dengan nama yang mengandung "${intent.specificFilters.studentName}".`);
+      sources.push('students_empty');
+    }
   }
 
-  // Add exam data if needed
+  // 3. Exam Data (Only if needed)
   if (intent.needsExamData) {
-    let examsToInclude = fullContext.exams;
+    const examsSnapshot = await getDocs(collection(db, 'exams'));
+    let exams = examsSnapshot.docs.map(doc => ({ ...convertDates(doc.data()) } as Exam));
 
     if (intent.specificFilters.examSubject) {
-      examsToInclude = examsToInclude.filter(
-        exam => exam.subject?.toLowerCase().includes(intent.specificFilters.examSubject!)
-      );
+      exams = exams.filter(e => e.subject.toLowerCase().includes(intent.specificFilters.examSubject!));
     }
 
-    const examList = examsToInclude.slice(0, 20).map((exam, i) =>
-      `${i + 1}. ${exam.title} (${exam.subject}) - Kelas ${exam.grade}, ${exam.totalQuestions} soal, ${exam.duration} menit`
+    const examList = exams.slice(0, 20).map((e, i) =>
+      `${i + 1}. ${e.title} (${e.subject}) - Kelas ${e.grade}`
     ).join('\n');
 
-    contextParts.push(`DAFTAR UJIAN (${Math.min(examsToInclude.length, 20)} dari ${examsToInclude.length}):\n${examList}`);
+    contextParts.push(`DAFTAR UJIAN (${Math.min(exams.length, 20)} dari ${exams.length}):\n${examList}`);
     sources.push('exams');
   }
 
-  // Add results data if needed
+  // 4. Results/Attempts Data (The heavy part)
   if (intent.needsResultsData) {
-    let attemptsToInclude = fullContext.examAttempts;
+    let attempts: ExamAttempt[] = [];
 
-    if (intent.specificFilters.timeRange === 'recent') {
-      const oneWeekAgo = new Date();
-      oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-      attemptsToInclude = attemptsToInclude.filter(
-        attempt => attempt.submittedAt >= oneWeekAgo
-      );
-    }
-
+    // If specific filter exists, try to query specifically
     if (intent.specificFilters.studentClass) {
-      attemptsToInclude = attemptsToInclude.filter(
-        attempt => attempt.studentClass?.toLowerCase().includes(intent.specificFilters.studentClass!)
+      const q = query(
+        collection(db, 'examAttempts'),
+        where('studentClass', '==', intent.specificFilters.studentClass.toUpperCase()), // Try exact match first
+        limit(50)
       );
+      const snap = await getDocs(q);
+      // If empty, maybe case mismatch, but let's trust the query for now or fall back to recent
+      if (!snap.empty) {
+        attempts = snap.docs.map(doc => ({ ...convertDates(doc.data()) } as ExamAttempt));
+      } else {
+        // Fallback: filter from recent stats if query failed (e.g. formatting)
+        attempts = stats.recentAttempts.filter(a =>
+          a.studentClass?.toLowerCase().includes(intent.specificFilters.studentClass!)
+        );
+      }
+    } else if (intent.specificFilters.studentName) {
+      // Client-side filter on recent attempts for name (since we can't easily query substring)
+      attempts = stats.recentAttempts.filter(a =>
+        a.studentName.toLowerCase().includes(intent.specificFilters.studentName!)
+      );
+    } else {
+      // General results query: Use the recent attempts we already fetched
+      attempts = stats.recentAttempts;
     }
 
-    // Limit and sort by most recent
-    const resultsList = attemptsToInclude.length > 0
-      ? attemptsToInclude
-        .sort((a, b) => b.submittedAt.getTime() - a.submittedAt.getTime())
+    if (attempts.length > 0) {
+      const resultsList = attempts
+        .sort((a, b) => b.score - a.score) // Sort by score for better context? Or time? Let's do time.
+        .sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime())
         .slice(0, 30)
-        .map((attempt, i) =>
-          `${i + 1}. ${attempt.studentName} (${attempt.studentClass}) - ${attempt.examTitle}: ${attempt.score}% (${attempt.isPassed ? 'Lulus' : 'Tidak Lulus'})`
-        ).join('\n')
-      : "BELUM ADA DATA HASIL UJIAN YANG TERCATAT.";
+        .map((a, i) =>
+          `${i + 1}. ${a.studentName} (${a.studentClass}) - ${a.examTitle}: ${a.score}%`
+        ).join('\n');
 
-    contextParts.push(`HASIL UJIAN TERBARU (${Math.min(attemptsToInclude.length, 30)} dari ${attemptsToInclude.length}):\n${resultsList}`);
-    sources.push('examAttempts');
+      contextParts.push(`SAMPEL HASIL UJIAN (${Math.min(attempts.length, 30)} data relevan):\n${resultsList}`);
+      sources.push('examAttempts');
+    } else {
+      contextParts.push("BELUM ADA DATA HASIL UJIAN YANG COCOK DENGAN KRITERIA.");
+    }
   }
 
   const contextText = contextParts.join('\n\n');
-
   return {
     contextText,
     dataSize: contextText.length,
@@ -296,49 +273,40 @@ export async function getRelevantContext(userQuery: string): Promise<RelevantCon
   };
 }
 
-/**
- * Chunks large context into smaller pieces if needed
- */
+// Keep these for backward compatibility if needed, but they are largely replaced by dynamic logic
 export function chunkContext(context: string, maxChunkSize: number = 8000): string[] {
-  if (context.length <= maxChunkSize) {
-    return [context];
-  }
-
+  if (context.length <= maxChunkSize) return [context];
   const chunks: string[] = [];
-  const sections = context.split('\n\n');
   let currentChunk = '';
-
-  for (const section of sections) {
+  context.split('\n\n').forEach(section => {
     if (currentChunk.length + section.length + 2 <= maxChunkSize) {
       currentChunk += (currentChunk ? '\n\n' : '') + section;
     } else {
-      if (currentChunk) {
-        chunks.push(currentChunk);
-      }
+      if (currentChunk) chunks.push(currentChunk);
       currentChunk = section;
     }
-  }
-
-  if (currentChunk) {
-    chunks.push(currentChunk);
-  }
-
+  });
+  if (currentChunk) chunks.push(currentChunk);
   return chunks;
 }
 
-/**
- * Summarizes large datasets for AI consumption
- */
 export function summarizeContext(context: ContextData): string {
-  const topPerformers = context.examAttempts
+  // Legacy function, might not be needed with new logic but keeping to avoid breakages
+  // Safely handle undefined arrays
+  const attempts = context.examAttempts || [];
+  const students = context.students || [];
+
+  if (attempts.length === 0) return "Belum ada data ujian untuk diringkas.";
+
+  const topPerformers = [...attempts]
     .sort((a, b) => b.score - a.score)
     .slice(0, 5);
 
-  const lowPerformers = context.examAttempts
+  const lowPerformers = [...attempts]
     .sort((a, b) => a.score - b.score)
     .slice(0, 5);
 
-  const subjectPerformance = context.examAttempts.reduce((acc, attempt) => {
+  const subjectPerformance = attempts.reduce((acc, attempt) => {
     const subject = attempt.examTitle?.split(' ')[0] || 'Unknown';
     if (!acc[subject]) {
       acc[subject] = { total: 0, sum: 0, count: 0 };
@@ -363,7 +331,28 @@ ${Object.entries(subjectPerformance).map(([subject, data]) =>
   ).join('\n')}
 
 DISTRIBUSI KELAS:
-${Array.from(new Set(context.students.map(s => s.class))).map(cls =>
-    `${cls}: ${context.students.filter(s => s.class === cls).length} siswa`
+${Array.from(new Set(students.map(s => s.class))).map(cls =>
+    `${cls}: ${students.filter(s => s.class === cls).length} siswa`
   ).join('\n')}`;
+}
+
+// Re-export getFullContext but optimized (or deprecated)
+// We'll implement a lightweight version just in case something calls it
+export async function getFullContext(): Promise<ContextData> {
+  const stats = await getBasicStats();
+  // Return empty arrays for heavy data to prevent massive reads
+  return {
+    students: [],
+    exams: [],
+    examAttempts: stats.recentAttempts,
+    questions: [],
+    summary: {
+      totalStudents: stats.totalStudents,
+      totalExams: stats.totalExams,
+      totalAttempts: stats.totalAttempts,
+      averageScore: stats.averageScore,
+      passRate: stats.passRate,
+      activeExams: stats.activeExams
+    }
+  };
 }

@@ -1,5 +1,6 @@
 import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from '@google/generative-ai';
-import { getRelevantContext, chunkContext, summarizeContext, getFullContext } from './context-retrieval';
+import { tools, handleToolCall } from './ai-tools';
+import { chunkContext } from './context-retrieval';
 import type { ExamAttempt } from './types';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from './firebase';
@@ -13,13 +14,13 @@ if (!apiKey) {
 const genAI = new GoogleGenerativeAI(apiKey);
 
 /**
- * Enhanced AI analysis with intelligent context retrieval
+ * Enhanced AI analysis with Function Calling (Tool Use)
  */
 export async function analyzeWithEnhancedPrompt(
   userQuery: string,
-  options: {
-    maxContextSize?: number;
-    useSmartRetrieval?: boolean;
+  _options: {
+    maxContextSize?: number; // Kept for interface compatibility
+    useSmartRetrieval?: boolean; // Kept for interface compatibility
     includeRecommendations?: boolean;
   } = {}
 ): Promise<{
@@ -30,143 +31,94 @@ export async function analyzeWithEnhancedPrompt(
   try {
     const model = genAI.getGenerativeModel({
       model: 'gemini-2.5-flash',
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      tools: tools as any,
       safetySettings: [
-        {
-          category: HarmCategory.HARM_CATEGORY_HARASSMENT,
-          threshold: HarmBlockThreshold.BLOCK_NONE,
-        },
-        {
-          category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-          threshold: HarmBlockThreshold.BLOCK_NONE,
-        },
-        {
-          category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-          threshold: HarmBlockThreshold.BLOCK_NONE,
-        },
-        {
-          category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-          threshold: HarmBlockThreshold.BLOCK_NONE,
-        },
+        { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+        { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
+        { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
+        { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
       ],
-      generationConfig: {
-        temperature: 0.3,
-        topP: 0.8,
-        maxOutputTokens: 2048,
-      }
     });
 
-    const { maxContextSize = 8000, useSmartRetrieval = true, includeRecommendations = true } = options;
+    const chat = model.startChat({
+      history: [
+        {
+          role: "user",
+          parts: [{
+            text: `Anda adalah Asisten Analisis Data Pendidikan untuk SDN TUGU 1.
+Tugas anda adalah menjawab pertanyaan guru/staf dengan data yang AKURAT dari database.
 
-    let contextData;
-    let contextSources: string[] = [];
+ATURAN:
+1. JANGAN MENJAWAB jika anda tidak yakin atau tidak punya data. Gunakan TOOLS yang tersedia untuk mencari data.
+2. Jika ditanya "Siapa yang..." atau "Berapa nilai...", GUNAKAN TOOL yang relevan. Jangan mengarang.
+3. Setelah mendapat data dari tool, rangkai jawaban dalam Bahasa Indonesia yang sopan dan profesional.
+4. Jika hasil tool kosong, katakan "Maaf, tidak ditemukan data yang sesuai."` }]
+        },
+        {
+          role: "model",
+          parts: [{ text: "Baik, saya mengerti. Saya akan menggunakan tools yang tersedia untuk mencari data akurat sebelum menjawab pertanyaan Anda." }]
+        }
+      ]
+    });
 
-    if (useSmartRetrieval) {
-      // Use intelligent context retrieval
-      const relevantContext = await getRelevantContext(userQuery);
-      contextData = relevantContext.contextText;
-      contextSources = relevantContext.sources;
+    const result = await chat.sendMessage(userQuery);
+    const response = result.response;
+    const usedTools: string[] = [];
 
-      // If context is too large, chunk it or summarize
-      // Note: getRelevantContext already tries to limit size, but we check again
-      if (relevantContext.dataSize > maxContextSize) {
-        // If still too big, we might need to summarize further or truncate
-        // For now, we trust getRelevantContext to be reasonable, or we truncate
-        contextData = contextData.substring(0, maxContextSize) + "\n...(truncated)";
-        contextSources.push('truncated');
+    // Simple loop to handle multiple turns of function calling if needed
+    // Note: complex chains might need a recursive function or while loop.
+    // Here we handle one level of tool use (User -> AI -> Tool -> AI -> Answer)
+    // Modify to WHILE loop for multi-step agents.
+
+    let currentResponse = response;
+    let maxTurns = 5;
+
+    while (currentResponse.functionCalls() && maxTurns > 0) {
+      maxTurns--;
+      const calls = currentResponse.functionCalls();
+      if (!calls) break;
+
+      const functionResponses = [];
+
+      for (const call of calls) {
+        usedTools.push(call.name);
+        console.log(`Calling tool: ${call.name}`);
+
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const apiResponse = await handleToolCall(call.name, call.args as any);
+          functionResponses.push({
+            functionResponse: {
+              name: call.name,
+              response: { result: apiResponse }
+            }
+          });
+        } catch (err) {
+          console.error(`Tool execution failed:`, err);
+          functionResponses.push({
+            functionResponse: {
+              name: call.name,
+              response: { error: "Failed to execute tool" }
+            }
+          });
+        }
       }
-    } else {
-      // Fallback to full context with summarization (legacy path)
-      const fullContext = await getFullContext();
-      contextData = summarizeContext(fullContext);
-      contextSources = ['full-summary'];
+
+      // Send tool results back to the model
+      const result2 = await chat.sendMessage(functionResponses);
+      currentResponse = result2.response;
     }
 
-    const systemPrompt = `Anda adalah Asisten Analisis Data Pendidikan untuk SDN TUGU 1 yang berfokus pada akurasi, detail, dan rekomendasi yang bisa ditindaklanjuti.
-
-TUJUAN UTAMA:
-- Menjawab pertanyaan berdasarkan DATA yang tersedia saja
-- Memberikan ANALISIS MENDALAM yang terstruktur, spesifik, dan berorientasi tindakan
-- Menghindari asumsi, generalisasi, dan informasi di luar data
-
-ATURAN KETAT:
-1) Gunakan HANYA data dalam konteks. Jika data tidak cukup, katakan keterbatasannya dan minta data tambahan yang diperlukan.
-2) Sebutkan nama siswa, kelas, judul ujian, nilai (%) dan angka spesifik dari data ketika relevan.
-3) Berikan perbandingan, tren (mis. naik/turun), dan distribusi jika data memungkinkan.
-4) Prioritaskan insight yang berdampak untuk guru/kepala sekolah; jangan menstigma siswa.
-
-KERANGKA ANALISIS:
-- Ringkasan Fakta: 2–3 kalimat, langsung ke angka kunci (rata-rata, kelulusan, dsb.)
-- Sorotan Siswa: siapa yang berprestasi dan siapa yang perlu perhatian (nama + nilai)
-- Pola & Tren: temuan penting per kelas/mata pelajaran/waktu
-- Risiko & Outlier: siswa/hasil yang menyimpang dengan penjelasan berdasarkan data
-- Rekomendasi Praktis: 2–4 langkah spesifik untuk guru/kepala sekolah
-
-GAYA KOMUNIKASI:
-- Bahasa Indonesia profesional dan mudah dipahami
-- Gunakan bullet points untuk kejelasan
-- Maksimalkan angka spesifik dari data, hindari jargon berlebihan
-
-FORMAT OUTPUT WAJIB:
-**Ringkasan Utama**
-• angka kunci (rata-rata, kelulusan, waktu, dsb.)
-
-**Siswa Prioritas**
-• 3–5 siswa nilai terendah (nama + nilai + konteks ujian)
-• 2–3 siswa berprestasi (nama + nilai)
-
-**Pola & Tren**
-• temuan signifikan per kelas/mata pelajaran/waktu
-
-**Rekomendasi Tindak Lanjut**
-• 2–4 rekomendasi konkret, spesifik, dan berbasis data
-
-Jika data tidak cukup untuk menjawab, jawab:
-"Data tidak cukup untuk analisis mendalam. Diperlukan: [sebutkan data yang kurang]".
-
-KHUSUS: Jika "Total Percobaan" adalah 0, JANGAN katakan data tidak cukup. Katakan: "Belum ada data hasil ujian yang tercatat di sistem saat ini."`;
-
-    const userPrompt = `${systemPrompt}
-
-DATA KONTEKS:
-${contextData}
-
-PERTANYAAN PENGGUNA:
-${userQuery}
-
-INSTRUKSI KHUSUS:
-- Analisis hanya berdasarkan data yang tersedia di atas
-- Sebutkan nama siswa, kelas, judul ujian, dan nilai spesifik jika relevan
-- Jika pertanyaan meminta daftar (mis. "sebutkan siswa yang sudah ujian"), berikan daftar nama siswa dan ujian yang mereka ikuti dari data
-- ${includeRecommendations ? 'Berikan 2-3 rekomendasi praktis untuk tindak lanjut' : 'Fokus pada analisis faktual tanpa rekomendasi'}
-- Maksimal 12 kalimat, gunakan bahasa yang mudah dipahami
-- Jika data tidak cukup untuk menjawab, jelaskan keterbatasan dan sarankan data tambahan yang diperlukan
-
-JAWABAN:`;
-
-    const result = await model.generateContent(userPrompt);
-    const response = result.response.text();
-
-    console.log("Gemini Response:", response); // Log for debugging
-
     return {
-      response,
-      contextUsed: contextSources,
-      dataSize: contextData.length
+      response: currentResponse.text(),
+      contextUsed: usedTools,
+      dataSize: 0 // Not relevant with tools
     };
 
   } catch (error) {
     console.error('Error in enhanced AI analysis:', error);
-
-    // Provide helpful error messages
-    if (error instanceof Error) {
-      if (error.message.includes('quota')) {
-        throw new Error('Kuota API Gemini telah habis. Silakan coba lagi nanti atau hubungi administrator.');
-      } else if (error.message.includes('safety')) {
-        throw new Error('Pertanyaan tidak dapat diproses karena alasan keamanan. Silakan reformulasi pertanyaan Anda.');
-      }
-    }
-
-    throw new Error('Terjadi kesalahan saat menganalisis data. Silakan coba lagi atau hubungi administrator.');
+    throw new Error('Terjadi kesalahan saat memproses permintaan Anda.');
   }
 }
 

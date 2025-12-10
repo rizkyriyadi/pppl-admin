@@ -1,22 +1,24 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { collection, getDocs, updateDoc, deleteDoc, doc, query, where, serverTimestamp } from 'firebase/firestore';
+import { collection, getDocs, deleteDoc, doc, query, where } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { User } from '@/lib/types';
+import { CreateStudentModal } from '@/components/students/CreateStudentModal';
+import { StudentDetailModal } from '@/components/students/StudentDetailModal';
+import { toast } from 'sonner';
+import { UserPlus, Search, Trash2, Edit, Eye, User as UserIcon } from 'lucide-react';
 
 export default function StudentsPage() {
   const [students, setStudents] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
-  const [editingStudent, setEditingStudent] = useState<User | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
 
-  const [formData, setFormData] = useState({
-    name: '',
-    nisn: '',
-    class: '',
-    password: '',
-  });
+  // Modal states
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [selectedStudent, setSelectedStudent] = useState<User | null>(null);
+  const [studentToEdit, setStudentToEdit] = useState<User | null>(null);
 
   useEffect(() => {
     fetchStudents();
@@ -35,189 +37,178 @@ export default function StudentsPage() {
       setStudents(studentsData);
     } catch (error) {
       console.error('Error fetching students:', error);
+      toast.error('Failed to fetch students');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleDelete = async (studentUid: string) => {
+    // In a real app, you might want a confirmation modal here
+    // For now, we'll use a browser confirm, or better, a toast with undo (but undo is hard for delete)
+    // Let's stick to a simple confirm for safety
+    if (!confirm('Are you sure you want to delete this student? This action cannot be undone.')) {
+      return;
+    }
 
     try {
-      if (editingStudent) {
-        // Update existing student
-        await updateDoc(doc(db, 'users', editingStudent.uid), {
-          name: formData.name,
-          nisn: formData.nisn,
-          class: formData.class,
-          updatedAt: serverTimestamp(),
-        });
-      } else {
-        // Create new student using API route (prevents logout issue)
-        const response = await fetch('/api/create-student', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            name: formData.name,
-            nisn: formData.nisn,
-            class: formData.class,
-            password: formData.password,
-          }),
-        });
-
-        const data = await response.json();
-
-        if (!response.ok) {
-          throw new Error(data.error || 'Failed to create student');
-        }
-      }
-
-      setShowModal(false);
-      resetForm();
+      await deleteDoc(doc(db, 'users', studentUid));
+      toast.success('Student deleted successfully');
       fetchStudents();
     } catch (error) {
-      console.error('Error saving student:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Failed to save student. Please try again.';
-      alert(errorMessage);
+      console.error('Error deleting student:', error);
+      toast.error('Failed to delete student');
     }
   };
 
   const handleEdit = (student: User) => {
-    setEditingStudent(student);
-    setFormData({
-      name: student.name,
-      nisn: student.nisn || '',
-      class: student.class || '',
-      password: '',
-    });
-    setShowModal(true);
+    setStudentToEdit(student);
+    setIsCreateModalOpen(true);
   };
 
-  const handleDelete = async (studentUid: string) => {
-    if (!confirm('Are you sure you want to delete this student? This action cannot be undone.')) {
-      return;
-    }
-    try {
-      await deleteDoc(doc(db, 'users', studentUid));
-      fetchStudents();
-    } catch (error) {
-      console.error('Error deleting student:', error);
-      alert('Failed to delete student');
-    }
+  const handleViewDetails = (student: User) => {
+    setSelectedStudent(student);
+    setIsDetailModalOpen(true);
   };
 
-  const resetForm = () => {
-    setFormData({
-      name: '',
-      nisn: '',
-      class: '',
-      password: '',
-    });
-    setEditingStudent(null);
+  const handleCreateSuccess = () => {
+    fetchStudents();
+    setStudentToEdit(null);
   };
 
-  const openCreateModal = () => {
-    resetForm();
-    setShowModal(true);
+  const handleCloseCreateModal = () => {
+    setIsCreateModalOpen(false);
+    setStudentToEdit(null);
   };
+
+  const filteredStudents = students.filter(student =>
+    student.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    student.nisn?.includes(searchTerm) ||
+    student.class?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   if (loading) {
     return (
-      <div className="p-8">
-        <div className="text-slate-600">Loading students...</div>
+      <div className="p-8 flex items-center justify-center min-h-[50vh]">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-slate-500 font-medium">Loading students...</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="p-8">
-      <div className="flex justify-between items-center mb-8">
+    <div className="p-8 max-w-7xl mx-auto">
+      {/* Header Section */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Students Management</h1>
-          <p className="text-slate-600 text-sm mt-1">Manage student accounts</p>
+          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Students Management</h1>
+          <p className="text-slate-500 text-sm mt-1">Manage student accounts and view performance</p>
         </div>
         <button
-          onClick={openCreateModal}
-          className="px-4 py-2 bg-blue-600 text-white rounded-md font-medium hover:bg-blue-700
-                   focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
+          onClick={() => setIsCreateModalOpen(true)}
+          className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 active:scale-[0.98] transition-all shadow-sm shadow-blue-500/20"
         >
-          Add Student
+          <UserPlus className="w-4 h-4" />
+          Add New Student
         </button>
       </div>
 
-      <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
+      {/* Search and Filter Bar */}
+      <div className="mb-6">
+        <div className="relative max-w-md">
+          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+            <Search className="h-4 w-4 text-slate-400" />
+          </div>
+          <input
+            type="text"
+            placeholder="Search by name, NISN, or class..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all shadow-sm"
+          />
+        </div>
+      </div>
+
+      {/* Students Table */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
-            <thead className="bg-slate-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">
-                  Name
+            <thead>
+              <tr className="bg-slate-50/50 border-b border-slate-100">
+                <th className="px-6 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                  Student Name
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">
+                <th className="px-6 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">
                   NISN
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">
+                <th className="px-6 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">
                   Class
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">
-                  Email
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">
-                  Status
-                </th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-slate-600 uppercase tracking-wider">
+                <th className="px-6 py-4 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">
                   Actions
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-200">
-              {students.length === 0 ? (
+            <tbody className="divide-y divide-slate-100">
+              {filteredStudents.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-slate-500">
-                    No students found. Add your first student to get started.
+                  <td colSpan={4} className="px-6 py-12 text-center">
+                    <div className="flex flex-col items-center justify-center">
+                      <div className="bg-slate-50 p-3 rounded-full mb-3">
+                        <UserIcon className="w-6 h-6 text-slate-400" />
+                      </div>
+                      <h3 className="text-slate-900 font-medium mb-1">No students found</h3>
+                      <p className="text-slate-500 text-sm">
+                        {searchTerm ? 'Try adjusting your search terms' : 'Get started by adding a new student'}
+                      </p>
+                    </div>
                   </td>
                 </tr>
               ) : (
-                students.map((student) => (
-                  <tr key={student.uid} className="hover:bg-slate-50">
+                filteredStudents.map((student) => (
+                  <tr key={student.uid} className="hover:bg-slate-50/80 transition-colors group">
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-slate-900">{student.name}</div>
+                      <div className="flex items-center gap-3">
+                        <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-xs">
+                          {student.name.charAt(0).toUpperCase()}
+                        </div>
+                        <div className="text-sm font-medium text-slate-900">{student.name}</div>
+                      </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600 font-mono">
                       {student.nisn}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900">
-                      {student.class}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600">
-                      {student.email}
-                    </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span
-                        className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
-                          student.isActive
-                            ? 'bg-green-100 text-green-800'
-                            : 'bg-slate-100 text-slate-800'
-                        }`}
-                      >
-                        {student.isActive ? 'Active' : 'Inactive'}
+                      <span className="inline-flex px-2.5 py-1 rounded-md bg-slate-100 text-slate-700 text-xs font-medium border border-slate-200">
+                        {student.class}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
-                      <button
-                        onClick={() => handleEdit(student)}
-                        className="text-slate-600 hover:text-slate-900"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => handleDelete(student.uid)}
-                        className="text-red-600 hover:text-red-800"
-                      >
-                        Delete
-                      </button>
+                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                      <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={() => handleViewDetails(student)}
+                          className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
+                          title="View Details"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleEdit(student)}
+                          className="p-2 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-all"
+                          title="Edit Student"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(student.uid)}
+                          className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
+                          title="Delete Student"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -227,110 +218,19 @@ export default function StudentsPage() {
         </div>
       </div>
 
-      {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-md w-full">
-            <div className="px-6 py-4 border-b border-slate-200">
-              <h2 className="text-xl font-semibold text-slate-900">
-                {editingStudent ? 'Edit Student' : 'Add New Student'}
-              </h2>
-            </div>
+      {/* Modals */}
+      <CreateStudentModal
+        isOpen={isCreateModalOpen}
+        onClose={handleCloseCreateModal}
+        onSuccess={handleCreateSuccess}
+        studentToEdit={studentToEdit}
+      />
 
-            <form onSubmit={handleSubmit} className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                  Full Name
-                </label>
-                <input
-                  type="text"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-md text-slate-900
-                           focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="e.g., Ahmad Rizki"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                  NISN
-                </label>
-                <input
-                  type="text"
-                  value={formData.nisn}
-                  onChange={(e) => setFormData({ ...formData, nisn: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-md text-slate-900
-                           focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Enter NISN"
-                  required
-                  disabled={!!editingStudent}
-                />
-                {!editingStudent && (
-                  <p className="text-xs text-slate-500 mt-1">
-                    This will be used as the login username
-                  </p>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                  Class
-                </label>
-                <input
-                  type="text"
-                  value={formData.class}
-                  onChange={(e) => setFormData({ ...formData, class: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-md text-slate-900
-                           focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="e.g., 4A"
-                  required
-                />
-              </div>
-
-              {!editingStudent && (
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                    Password
-                  </label>
-                  <input
-                    type="password"
-                    value={formData.password}
-                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-md text-slate-900
-                             focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="Minimum 6 characters"
-                    minLength={6}
-                    required
-                  />
-                </div>
-              )}
-
-              <div className="flex justify-end space-x-3 pt-4">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowModal(false);
-                    resetForm();
-                  }}
-                  className="px-4 py-2 border border-slate-300 text-slate-700 rounded-md font-medium
-                           hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-500
-                           focus:ring-offset-2 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-blue-600 text-white rounded-md font-medium hover:bg-blue-700
-                           focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
-                >
-                  {editingStudent ? 'Update Student' : 'Add Student'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <StudentDetailModal
+        isOpen={isDetailModalOpen}
+        onClose={() => setIsDetailModalOpen(false)}
+        student={selectedStudent}
+      />
     </div>
   );
 }
